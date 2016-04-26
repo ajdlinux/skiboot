@@ -126,19 +126,25 @@ static void flatten_dt_properties(void *fdt, const struct dt_node *dn)
 	}
 }
 
-static void flatten_dt_node(void *fdt, const struct dt_node *root)
+static void flatten_dt_node(void *fdt,
+			    const struct dt_node *root,
+			    bool exclusive)
 {
 	const struct dt_node *i;
 
+	if (!exclusive) {
 #ifdef DEBUG_FDT
-	printf("FDT: node: %s\n", root->name);
+		printf("FDT: node: %s\n", root->name);
 #endif
-	flatten_dt_properties(fdt, root);
-	list_for_each(&root->children, i, list) {
-		dt_begin_node(fdt, i);
-		flatten_dt_node(fdt, i);
-		dt_end_node(fdt);
+		dt_begin_node(fdt, root);
+		flatten_dt_properties(fdt, root);
 	}
+
+	list_for_each(&root->children, i, list)
+		flatten_dt_node(fdt, i, false);
+
+	if (!exclusive)
+		dt_end_node(fdt);
 }
 
 static void create_dtb_reservemap(void *fdt, const struct dt_node *root)
@@ -163,51 +169,80 @@ static void create_dtb_reservemap(void *fdt, const struct dt_node *root)
 	save_err(fdt_finish_reservemap(fdt));
 }
 
-void *create_dtb(const struct dt_node *root)
+static int __create_dtb(void *fdt, size_t len,
+			const struct dt_node *root,
+			bool exclusive)
 {
-	void *fdt = NULL;
-	size_t len = DEVICE_TREE_MAX_SIZE;
 	uint32_t old_last_phandle = last_phandle;
 
-	do {
-		if (fdt)
-			free(fdt);
-		last_phandle = old_last_phandle;
-		fdt_error = 0;
-		fdt = malloc(len);
-		if (!fdt) {
-			prerror("dtb: could not malloc %lu\n", (long)len);
-			return NULL;
-		}
+	fdt_create(fdt, len);
 
-		fdt_create(fdt, len);
-
+	if (root == dt_root && !exclusive)
 		create_dtb_reservemap(fdt, root);
 
-		/* Open root node */
-		dt_begin_node(fdt, root);
+	/* Unflatten our live tree */
+	flatten_dt_node(fdt, root, exclusive);
 
-		/* Unflatten our live tree */
-		flatten_dt_node(fdt, root);
-
-		/* Close root node */
-		dt_end_node(fdt);
-
-		save_err(fdt_finish(fdt));
-
-		if (!fdt_error)
-			break;
-
-		len *= 2;
-	} while (fdt_error == -FDT_ERR_NOSPACE);
+	save_err(fdt_finish(fdt));
+	if (fdt_error) {
+		last_phandle = old_last_phandle;
+		prerror("dtb: error %s\n", fdt_strerror(fdt_error));
+		return fdt_error;
+	}
 
 #ifdef DEBUG_FDT
 	dump_fdt(fdt);
 #endif
+	return 0;
+}
 
-	if (fdt_error) {
-		prerror("dtb: error %s\n", fdt_strerror(fdt_error));
-		return NULL;
-	}
+static int64_t opal_get_device_tree(uint32_t phandle,
+				    uint64_t buf,
+				    uint64_t len)
+{
+	struct dt_node *root;
+	void *fdt = (void *)buf;
+	int ret;
+
+	if (!fdt || !len)
+		return OPAL_PARAMETER;
+
+	root = dt_find_by_phandle(dt_root, phandle);
+	if (!root)
+		return OPAL_PARAMETER;
+
+	ret = __create_dtb(fdt, len, root, true);
+	if (ret == -FDT_ERR_NOSPACE)
+		return OPAL_NO_MEM;
+	else if (ret)
+		return OPAL_EMPTY;
+
+	return OPAL_SUCCESS;
+}
+opal_call(OPAL_GET_DEVICE_TREE, opal_get_device_tree, 3);
+
+void *create_dtb(const struct dt_node *root)
+{
+	void *fdt = NULL;
+	size_t len = DEVICE_TREE_MAX_SIZE;
+	int ret;
+
+	do {
+		fdt = malloc(len);
+		if (!fdt) {
+			prerror("dtb: cannot allocate FDT blob (%lu bytes)\n",
+				(long)len);
+			break;
+		}
+
+		ret = __create_dtb(fdt, len, root, false);
+		if (ret) {
+			free(fdt);
+			fdt = NULL;
+		}
+
+		len *= 2;
+	} while (ret == -FDT_ERR_NOSPACE);
+
 	return fdt;
 }
