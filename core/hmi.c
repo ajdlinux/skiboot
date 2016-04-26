@@ -18,7 +18,6 @@
 #include <opal-msg.h>
 #include <processor.h>
 #include <chiptod.h>
-#include <lock.h>
 #include <xscom.h>
 #include <capp.h>
 #include <pci.h>
@@ -269,9 +268,9 @@ static int handle_capp_recoverable(int chip_id)
 
 		if ((mask & (1 << phb_index)) && (chip_id == dt_chip_id)) {
 			phb = pci_get_phb(phb_id);
-			phb->ops->lock(phb);
+			phb_lock(phb);
 			phb->ops->set_capp_recovery(phb);
-			phb->ops->unlock(phb);
+			phb_unlock(phb);
 			return 1;
 		}
 	}
