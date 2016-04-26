@@ -1478,6 +1478,7 @@ void pci_reset(void)
 	}
 }
 
+#ifndef PCI_SERIALIZED_JOBS
 static void pci_do_jobs(void (*fn)(void *))
 {
 	struct cpu_job **jobs;
@@ -1509,16 +1510,33 @@ static void pci_do_jobs(void (*fn)(void *))
 	}
 	free(jobs);
 }
+#endif /* !PCI_SERIALIZED_JOBS */
 
 void pci_init_slots(void)
 {
 	unsigned int i;
 
+#ifdef PCI_SERIALIZED_JOBS
+	prlog(PR_NOTICE, "PCI: Resetting PHBs...\n");
+	for (i = 0; i < ARRAY_SIZE(phbs); i++) {
+		if (!phbs[i])
+			continue;
+		pci_reset_phb(phbs[i]);
+	}
+
+	prlog(PR_NOTICE, "PCI: Probing slots...\n");
+	for (i = 0; i < ARRAY_SIZE(phbs); i++) {
+		if (!phbs[i])
+			continue;
+		pci_scan_phb(phbs[i]);
+	}
+#else
 	prlog(PR_NOTICE, "PCI: Resetting PHBs...\n");
 	pci_do_jobs(pci_reset_phb);
 
 	prlog(PR_NOTICE, "PCI: Probing slots...\n");
 	pci_do_jobs(pci_scan_phb);
+#endif
 
 	if (platform.pci_probe_complete)
 		platform.pci_probe_complete();
