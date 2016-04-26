@@ -113,24 +113,28 @@ static void dump_fdt(void)
 #endif
 }
 
+static void flatten_dt_properties(const struct dt_node *dn)
+{
+	const struct dt_property *p;
+
+	list_for_each(&dn->properties, p, list) {
+		if (strstarts(p->name, DT_PRIVATE))
+			continue;
+#ifdef DEBUG_FDT
+		printf("FDT: prop: %s size: %ld\n", p->name, p->len);
+#endif
+		dt_property(p);
+	}
+}
+
 static void flatten_dt_node(const struct dt_node *root)
 {
 	const struct dt_node *i;
-	const struct dt_property *p;
 
 #ifdef DEBUG_FDT
 	printf("FDT: node: %s\n", root->name);
 #endif
-
-	list_for_each(&root->properties, p, list) {
-		if (strstarts(p->name, DT_PRIVATE))
-			continue;
-#ifdef DEBUG_FDT
-		printf("FDT:   prop: %s size: %ld\n", p->name, p->len);
-#endif
-		dt_property(p);
-	}
-
+	flatten_dt_properties(root);
 	list_for_each(&root->children, i, list) {
 		dt_begin_node(i);
 		flatten_dt_node(i);
