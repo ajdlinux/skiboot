@@ -20,6 +20,7 @@
 /* Some fwd declarations for types used further down */
 struct phb;
 struct pci_device;
+struct pci_slot;
 struct errorlog;
 
 enum resource_id {
@@ -72,7 +73,7 @@ struct platform {
 
 	/*
 	 * This is called once per PHB before probing. It allows the
-	 * platform to setup some PHB private data that can be used
+	* platform to setup some PHB private data that can be used
 	 * later on by calls such as pci_get_slot_info() below. The
 	 * "index" argument is the PHB index within the IO HUB (or
 	 * P8 chip).

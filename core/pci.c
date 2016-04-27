@@ -18,6 +18,7 @@
 #include <cpu.h>
 #include <pci.h>
 #include <pci-cfg.h>
+#include <pci-slot.h>
 #include <timebase.h>
 #include <device.h>
 #include <fsp.h>
@@ -443,11 +444,72 @@ static void pci_cleanup_bridge(struct phb *phb, struct pci_device *pd)
 	pci_cfg_write16(phb, pd->bdfn, PCI_CFG_CMD, cmd);	
 }
 
+/*
+ * Turn off the power suply to the slot if there're nothing connected
+ * to it for 2 purposes: saving power obviously, and initializing the
+ * slot to initial power-off state for hotplug
+ */
+static void pci_try_power_off_slot(struct phb *phb, struct pci_device *pd)
+{
+	uint32_t flags = (PCI_SLOT_FLAG_BOOTUP |
+			  PCI_SLOT_FLAG_NO_HOTPLUG_MSG);
+	int64_t rc;
 
-/* pci_scan - Perform a recursive scan of the bus at bus_number
- *            populating the list passed as an argument. This also
- *            performs the bus numbering, so it returns the largest
- *            bus number that was assigned.
+	/* Check if it's pluggable slot */
+	if (!pd ||
+	    !pd->slot ||
+	    !pd->slot->pluggable ||
+	    !pd->slot->ops.set_power_status)
+		return;
+
+	/* Bail if there're something connected */
+	if (!list_empty(&pd->children))
+		return;
+
+	pci_slot_add_flags(pd->slot, flags);
+	rc = pd->slot->ops.set_power_status(pd->slot, 0);
+	while (rc > 0) {
+		time_wait(rc);
+		rc = pd->slot->ops.poll(pd->slot, NULL);
+	}
+
+	pci_slot_remove_flags(pd->slot, flags);
+	if (rc != OPAL_SUCCESS)
+		PCINOTICE(phb, pd->bdfn, "Error %lld powering off slot\n", rc);
+	else
+		PCIDBG(phb, pd->bdfn, "Power off hotpluggable slot\n");
+}
+
+/* Remove all subordinate PCI devices leading from the indicated
+ * PCI bus. It's used to remove all PCI devices behind one PCI
+ * slot at unplugging time
+ */
+void pci_remove_bus(struct phb *phb, struct list_head *list)
+{
+	struct pci_device *pd, *tmp;
+
+	if (list_empty(list))
+		return;
+
+	list_for_each_safe(list, pd, tmp, link) {
+		pci_remove_bus(phb, &pd->children);
+
+		/* Release device node and PCI slot */
+		if (pd->dn)
+			dt_free(pd->dn);
+		if (pd->slot)
+			free(pd->slot);
+
+		/* Remove from parent list and release itself */
+		list_del(&pd->link);
+		free(pd);
+	}
+}
+
+/* Perform a recursive scan of the bus at bus_number populating
+ * the list passed as an argument. This also performs the bus
+ * numbering, so it returns the largest bus number that was
+ * assigned.
  *
  * Note: Eventually this might want to access some VPD information
  *       in order to know what slots to scan and what not etc..
@@ -457,9 +519,9 @@ static void pci_cleanup_bridge(struct phb *phb, struct pci_device *pd)
  * XXX NOTE: We might also want to setup the PCIe MPS/MRSS properly
  *           here as Linux may or may not do it
  */
-static uint8_t pci_scan(struct phb *phb, uint8_t bus, uint8_t max_bus,
-			struct list_head *list, struct pci_device *parent,
-			bool scan_downstream)
+uint8_t pci_scan_bus(struct phb *phb, uint8_t bus, uint8_t max_bus,
+		     struct list_head *list, struct pci_device *parent,
+		     bool scan_downstream)
 {
 	struct pci_device *pd = NULL;
 	uint8_t dev, fn, next_bus, max_sub, save_max;
@@ -505,10 +567,15 @@ static uint8_t pci_scan(struct phb *phb, uint8_t bus, uint8_t max_bus,
 	 * We only scan downstream if instructed to do so by the
 	 * caller. Typically we avoid the scan when we know the
 	 * link is down already, which happens for the top level
-	 * root complex, and avoids a long secondary timeout
+	 * root complex, and avoids a long secondary timeout. The
+	 * power will be turned off if it's a empty hotpluggable
+	 * slot.
 	 */
-	if (!scan_downstream)
+	if (!scan_downstream) {
+		list_for_each(list, pd, link)
+			pci_try_power_off_slot(phb, pd);
 		return bus;
+	}
 
 	next_bus = bus + 1;
 	max_sub = bus;
@@ -576,8 +643,8 @@ static uint8_t pci_scan(struct phb *phb, uint8_t bus, uint8_t max_bus,
 
 		/* Perform recursive scan */
 		if (do_scan) {
-			max_sub = pci_scan(phb, next_bus, max_bus,
-					   &pd->children, pd, true);
+			max_sub = pci_scan_bus(phb, next_bus, max_bus,
+					       &pd->children, pd, true);
 		} else if (!use_max) {
 			/* XXX Empty bridge... we leave room for hotplug
 			 * slots etc.. but we should be smarter at figuring
@@ -594,6 +661,9 @@ static uint8_t pci_scan(struct phb *phb, uint8_t bus, uint8_t max_bus,
 		pd->subordinate_bus = max_sub;
 		pci_cfg_write8(phb, pd->bdfn, PCI_CFG_SUBORDINATE_BUS, max_sub);
 		next_bus = max_sub + 1;
+
+		/* Turn off its power if it's empty hotpluggable slot */
+		pci_try_power_off_slot(phb, pd);
 	}
 
 	return max_sub;
@@ -785,7 +855,7 @@ static void pci_scan_phb(void *data)
 	/* Scan root port and downstream ports if applicable */
 	PCIDBG(phb, 0, "Scanning (upstream%s)...\n",
 	       has_link ? "+downsteam" : " only");
-	pci_scan(phb, 0, 0xff, &phb->devices, NULL, has_link);
+	pci_scan_bus(phb, 0, 0xff, &phb->devices, NULL, has_link);
 
 	/* Configure MPS (Max Payload Size) for PCIe domain */
 	pci_walk_dev(phb, NULL, pci_get_mps, &mps);
@@ -1311,12 +1381,12 @@ static void pci_print_summary_line(struct phb *phb, struct pci_device *pd,
 			  rev_class & 0xff, rev_class >> 8, cname, slotstr);
 }
 
-
-static void pci_add_one_node(struct phb *phb, struct pci_device *pd,
-			     struct dt_node *parent_node,
-			     struct pci_lsi_state *lstate, uint8_t swizzle)
+static void pci_add_one_device_node(struct phb *phb,
+				    struct pci_device *pd,
+				    struct dt_node *parent_node,
+				    struct pci_lsi_state *lstate,
+				    uint8_t swizzle)
 {
-	struct pci_device *child;
 	struct dt_node *np;
 	const char *cname;
 #define MAX_NAME 256
@@ -1431,14 +1501,14 @@ static void pci_add_one_node(struct phb *phb, struct pci_device *pd,
 	 * Instead add a ranges property that explicitly translates 1:1.
 	 */
 	dt_add_property(np, "ranges", ranges_direct, sizeof(ranges_direct));
-
-	list_for_each(&pd->children, child, link)
-		pci_add_one_node(phb, child, np, lstate, swizzle);
 }
 
-static void pci_add_nodes(struct phb *phb)
+void pci_add_device_nodes(struct phb *phb,
+			  struct list_head *list,
+			  struct dt_node *parent_node,
+			  struct pci_lsi_state *lstate,
+			  uint8_t swizzle)
 {
-	struct pci_lsi_state *lstate = &phb->lstate;
 	struct pci_device *pd;
 
 	/* If the PHB has its own slot info, add them */
@@ -1446,8 +1516,15 @@ static void pci_add_nodes(struct phb *phb)
 		pci_add_slot_properties(phb, phb->slot_info, NULL);
 
 	/* Add all child devices */
-	list_for_each(&phb->devices, pd, link)
-		pci_add_one_node(phb, pd, phb->dt_node, lstate, 0);
+	list_for_each(list, pd, link) {
+		pci_add_one_device_node(phb, pd, parent_node,
+					lstate, swizzle);
+		if (list_empty(&pd->children))
+			continue;
+
+		pci_add_device_nodes(phb, &pd->children,
+				     pd->dn, lstate, swizzle);
+	}
 }
 
 static void __pci_reset(struct list_head *list)
@@ -1546,7 +1623,8 @@ void pci_init_slots(void)
 	for (i = 0; i < ARRAY_SIZE(phbs); i++) {
 		if (!phbs[i])
 			continue;
-		pci_add_nodes(phbs[i]);
+		pci_add_device_nodes(phbs[i], &phbs[i]->devices,
+				     phbs[i]->dt_node, &phbs[i]->lstate, 0);
 	}
 
 	/* PHB final fixup */
