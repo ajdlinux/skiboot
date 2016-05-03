@@ -164,7 +164,11 @@
 #define OPAL_CEC_REBOOT2			116
 #define OPAL_CONSOLE_FLUSH			117
 #define OPAL_GET_DEVICE_TREE			118
-#define OPAL_LAST				118
+#define OPAL_PCI_GET_PRESENCE_STATE		119
+#define OPAL_PCI_GET_POWER_STATE		120
+#define OPAL_PCI_SET_POWER_STATE		121
+#define OPAL_PCI_POLL2				122
+#define OPAL_LAST				122
 
 /* Device tree flags */
 
