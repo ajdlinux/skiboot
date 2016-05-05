@@ -387,7 +387,9 @@ enum OpalPciSlotPresentenceState {
 
 enum OpalPciSlotPowerState {
 	OPAL_PCI_SLOT_POWER_OFF	= 0,
-	OPAL_PCI_SLOT_POWER_ON	= 1
+	OPAL_PCI_SLOT_POWER_ON	= 1,
+	OPAL_PCI_SLOT_HOTPLUG_REMOVE = 2, /* Remove from device tree without powering off */
+	OPAL_PCI_SLOT_HOTPLUG_ADD = 3 /* Add to device tree when already powered on */
 };
 
 enum OpalSlotLedType {

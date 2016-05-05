@@ -716,10 +716,10 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 	case FIRENZE_PCI_SLOT_NORMAL:
 	case FIRENZE_PCI_SLOT_SPOWER_START:
 		FIRENZE_PCI_DBG("%016llx SPOWER: Starts (%s)\n",
-				slot->id, val ? "On" : "Off");
+				slot->id, val ? "On [TODO or hotplug!]" : "Off");
 
 		/* Prepare link down if necessary */
-		if (!val && slot->ops.prepare_link_change) {
+		if (val == OPAL_PCI_SLOT_POWER_OFF && slot->ops.prepare_link_change) {
 			FIRENZE_PCI_DBG("%016llx SPOWER: Prepares link down\n",
 					slot->id);
 			slot->ops.prepare_link_change(slot, false);
@@ -730,27 +730,40 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 		 * corrupting the power status on another channel.
 		 */
 		FIRENZE_PCI_DBG("%016llx SPOWER: Powering %s\n",
-				slot->id, val ? "on" : "off");
+				slot->id, val ? "on [TODO or hotplug!]" : "off");
 		plat_slot->req->op = SMBUS_WRITE;
 		pval = (uint8_t *)plat_slot->req->rw_buf;
-		if (val) {
+		switch (val) {
+		case OPAL_PCI_SLOT_POWER_ON:
 			plat_slot->next_state = FIRENZE_PCI_SLOT_SPOWER_ON;
 			*pval = *plat_slot->power_status;
 			(*pval) &= ~plat_slot->power_mask;
 			(*pval) |= plat_slot->power_on;
-		} else {
+			break;
+		case OPAL_PCI_SLOT_POWER_OFF:
 			plat_slot->next_state = FIRENZE_PCI_SLOT_SPOWER_OFF;
 			*pval = *plat_slot->power_status;
 			(*pval) &= ~plat_slot->power_mask;
 			(*pval) |= plat_slot->power_off;
+			break;
+		case OPAL_PCI_SLOT_HOTPLUG_REMOVE:
+			pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_OFF);
+			break;
+		case OPAL_PCI_SLOT_HOTPLUG_ADD:
+			pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_ON);
+			break;
 		}
 
 		/* When the OS isn't up yet, we shouldn't fire any PCI
 		 * hotplug messages. Nobody will consume that and it
 		 * will cause system hang.
 		 */
-		if (pci_slot_has_flags(slot, PCI_SLOT_FLAG_NO_HOTPLUG_MSG))
+		if (pci_slot_has_flags(slot, PCI_SLOT_FLAG_NO_HOTPLUG_MSG)) {
+			if (val == OPAL_PCI_SLOT_HOTPLUG_REMOVE || val == OPAL_PCI_SLOT_HOTPLUG_ADD) {
+				FIRENZE_PCI_ERR("%016llx SPOWER: Attempted HOTPLUG OPERATION.... TODO TODO TODO\n", slot->id);
+			}
 			plat_slot->next_state = FIRENZE_PCI_SLOT_SPOWER_DONE;
+		}
 
 		slot->retries = FIRENZE_PCI_SLOT_RETRIES;
 		pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_WAIT_RSP);
@@ -781,10 +794,11 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 	case FIRENZE_PCI_SLOT_SPOWER_OFF:
 		FIRENZE_PCI_DBG("%016llx SPOWER: Fire unplugging event\n",
 				slot->id);
-
-		/* Update last power status */
-		pval = (uint8_t *)plat_slot->req->rw_buf;
-		*plat_slot->power_status = *pval;
+		if (val != OPAL_PCI_SLOT_HOTPLUG_REMOVE) {
+			/* Update last power status */
+			pval = (uint8_t *)plat_slot->req->rw_buf;
+			*plat_slot->power_status = *pval;
+		}
 
 		/* Sending hotplug event. We don't need care the link
 		 * status on power-off.
@@ -801,9 +815,10 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 				slot->id);
 
 		/* Update last power status */
-		pval = (uint8_t *)plat_slot->req->rw_buf;
-		*plat_slot->power_status = *pval;
-
+		if (val != OPAL_PCI_SLOT_HOTPLUG_ADD) {
+			pval = (uint8_t *)plat_slot->req->rw_buf;
+			*plat_slot->power_status = *pval;
+		}
 		/* We can't send hotplug event, which is built after
 		 * rescanning the affected PCI domain. Instead, we
 		 * have to poll link until it's up after power-on.
@@ -827,7 +842,7 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 					msecs_to_tb(FIRENZE_PCI_SLOT_DELAY));
 
 		/* Prepare link up */
-		if (slot->ops.prepare_link_change) {
+		if (slot->ops.prepare_link_change && val != OPAL_PCI_SLOT_HOTPLUG_ADD) {
 			FIRENZE_PCI_DBG("%016llx SPOWER: Prepare link up\n",
 					slot->id);
 			slot->ops.prepare_link_change(slot, true);
