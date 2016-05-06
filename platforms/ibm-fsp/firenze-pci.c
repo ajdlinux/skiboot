@@ -766,15 +766,17 @@ static int64_t firenze_pci_slot_set_power(struct pci_slot *slot, uint8_t val)
 		}
 
 		slot->retries = FIRENZE_PCI_SLOT_RETRIES;
-		pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_WAIT_RSP);
-		if (pci_slot_has_flags(slot, PCI_SLOT_FLAG_BOOTUP))
-			i2c_set_req_timeout(plat_slot->req,
-					    FIRENZE_PCI_I2C_TIMEOUT);
-		else
-			i2c_set_req_timeout(plat_slot->req, 0ul);
-		i2c_queue_req(plat_slot->req);
+		if (val != OPAL_PCI_SLOT_HOTPLUG_REMOVE && val != OPAL_PCI_SLOT_HOTPLUG_ADD) {
+			pci_slot_set_state(slot, FIRENZE_PCI_SLOT_SPOWER_WAIT_RSP);
+			if (pci_slot_has_flags(slot, PCI_SLOT_FLAG_BOOTUP))
+				i2c_set_req_timeout(plat_slot->req,
+						    FIRENZE_PCI_I2C_TIMEOUT);
+			else
+				i2c_set_req_timeout(plat_slot->req, 0ul);
+			i2c_queue_req(plat_slot->req);
+		}
 		return pci_slot_set_sm_timeout(slot,
-				msecs_to_tb(FIRENZE_PCI_SLOT_DELAY));
+					       msecs_to_tb(FIRENZE_PCI_SLOT_DELAY));
 	case FIRENZE_PCI_SLOT_SPOWER_WAIT_RSP:
 		if (slot->retries-- == 0) {
 			FIRENZE_PCI_DBG("%016llx SPOWER: Timeout waiting for %08x\n",
