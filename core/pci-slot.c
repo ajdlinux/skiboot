@@ -104,6 +104,7 @@ static int64_t pci_slot_sm_poll(struct pci_slot *slot, uint8_t *val)
 		ret = slot->ops.get_presence_status(slot, val);
 		break;
 	case PCI_SLOT_STATE_SPOWER:
+		prlog(PR_DEBUG, PCI_SLOT_PREFIX "Polling set power status!\n", slot->id);
 		ret = slot->ops.set_power_status(slot, *val);
 		break;
 	default:

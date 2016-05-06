@@ -661,6 +661,7 @@ static int64_t opal_pci_set_power_state(uint64_t id, uint64_t data)
 	uint8_t *power_state = (uint8_t *)data;
 	int64_t rc = OPAL_SUCCESS;
 
+	prlog(PR_DEBUG, "Call to set_power_state! id = %llu, power_state = %llu, slot* = %p, phb* = %p\n", id, data, slot, phb);
 	if (!slot || !phb)
 		return OPAL_PARAMETER;
 	if (!slot->ops.get_power_status)
