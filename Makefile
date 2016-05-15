@@ -9,11 +9,9 @@ ARCH = $(shell uname -m)
 ifdef CROSS_COMPILE
 	CROSS ?= $(CROSS_COMPILE)
 endif
-ifeq ("$(ARCH)", "ppc64")
-	CROSS ?=
-else
-	CROSS ?= powerpc64-linux-
-endif
+
+# Fixed tool-chain
+CROSS=powerpc-linux-gnu-
 
 #
 # Set to enable SLW bits
