@@ -376,6 +376,16 @@ enum OpalPciMaskAction {
 	OPAL_MASK_ERROR_TYPE = 1
 };
 
+enum OpalPciSlotPresentenceState {
+	OPAL_PCI_SLOT_EMPTY	= 0,
+	OPAL_PCI_SLOT_PRESENT	= 1
+};
+
+enum OpalPciSlotPowerState {
+	OPAL_PCI_SLOT_POWER_OFF	= 0,
+	OPAL_PCI_SLOT_POWER_ON	= 1
+};
+
 enum OpalSlotLedType {
 	OPAL_SLOT_LED_TYPE_ID = 0,	/* IDENTIFY LED */
 	OPAL_SLOT_LED_TYPE_FAULT = 1,	/* FAULT LED */
@@ -422,6 +432,7 @@ enum opal_msg_type {
 	OPAL_MSG_DPO		= 5,
 	OPAL_MSG_PRD		= 6,
 	OPAL_MSG_OCC		= 7,
+	OPAL_MSG_PCI_HOTPLUG	= 8,
 	OPAL_MSG_TYPE_MAX,
 };
 
