@@ -1,0 +1,110 @@
+Overview
+========
+
+The PCI slots are instantiated to represent their associated properties and
+operations. The slot properties are exported to OS through the device tree
+node of the corresponding parent PCI device. The slot operations are used
+to accomodate requests from OS regarding the indicated PCI slot:
+
+   * PCI slot reset
+   * PCI slot property retrival
+
+The PCI slots are expected to be created by individual platforms based on
+the given templates, which are classified to PHB slot or normal one currently.
+The PHB slot is instantiated based on PHB types like P7IOC and PHB3. However,
+the normal PCI slots are created based on general RC (Root Complex), PCIE switch
+ports, PCIE-to-PCIx bridge. Individual platform may create PCI slot, which doesn't
+have existing template.
+
+The PCI slots are created at different stages according to their types. PHB slots
+are expected to be created once the PHB is register (struct platform::pci_setup_phb())
+because the PHB slot reset operations are required at early stage of PCI enumeration.
+The normal slots are populated after their parent PCI devices are instantiated at
+struct platform::pci_get_slot_info().
+
+The operation set supplied by the template might be overrided and reimplemented, or
+partially. It's usually done according to the VPD figured out by individual platforms.
+
+PCI Slot Operations
+===================
+
+The following operations are supported to one particular PCI slot. More details
+could be found from the definition of struct pci_slot_ops:
+
+get_presence_state    Check if any adapter connected to slot
+get_link_state        Retrieve PCIE link status: up, down, link width
+get_power_state       Retrieve the power status: on, off
+get_attention_state   Retrieve attention status: on, off, blinking
+get_latch_state       Retrieve latch status
+set_power_state       Configure the power status: on, off
+set_attention_state   Configure attention status: on, off, blinking
+
+prepare_link_change   Prepare PCIE link status change
+poll_link             Poll PCIE link until it's up or down permanently
+creset                Complete reset, only available to PHB slot
+freset                Fundamental reset
+pfreset               Post fundamental reset
+hreset                Hot reset
+poll                  Interface for OPAL API to drive internal state machine
+
+add_properties        Additional PCI slot properties seen by platform
+
+PCI Slot Properties
+===================
+
+The following PCI slot properties have been exported through PCI device tree
+node for a root port, a PCIE switch port, or a PCIE to PCIx bridge. If the
+individual platforms (e.g. Firenze and Apollo) have VPD for the PCI slot, they
+should extract the PCI slot properties from VPD and export them accordingly.
+
+ibm,reset-by-firmware  Boolean indicating whether the slot reset should be
+                       done in firmware
+ibm,slot-pluggable     Boolean indicating whether the slot is pluggable
+ibm,slot-power-ctl     Boolean indicating whether the slot has power control
+ibm,slot-wired-lanes   The number of hardware lanes that are wired
+ibm,slot-pwr-led-ctl   Presence of slot power led, and controlling entity
+ibm,slot-attn-led-ctl  Presence of slot ATTN led, and controlling entity
+
+PCI Hotplug
+===========
+
+The implementation of PCI slot hotplug heavily relies on its power state.
+Initially, the slot is powered off if there are no adapters behind it.
+Otherwise, the slot should be powered on.
+
+During the hot plugging time, the adapter is inserted to the slot and then
+the slot is going to be powered on. The adapter is probed and device tree
+nodes are populated after the slot's power is on. On completion of that,
+one OPAL message is sent to OS which in turn retrieves the newly added
+device sub-tree using opal_get_device_tree().
+
+On the other handle, the slot's power should be turned off before the
+adapter behind the slot can be removed safely. Before the slot's power
+is off, the PCI devices and their corresponding device tree nodes are
+removed. On the completion, one OPAL message sent to notify OS.
+
+The OPAL messages for PCI hotplug, originated from skiboot, are identified
+with message type (OPAL_MSG_PCI_HOTPLUG). The first parameter is 0 or 1,
+meaning slot power-off or power-on event. The second parameter is the phandle
+of the slot's device tree node.
+
+PCI Slot on Apollo and Firenze
+==============================
+
+On IBM's Apollo and Firenze platform, the PCI VPD is fetched from dedicated LID,
+which is organized in so-called 1004, 1005, or 1006 format. 1006 mapping format
+isn't supported currently. The PCI slot properties are figured out from the VPD.
+On the other hand, there might have external power management entity hooked to
+I2C buses for one PCI slot. The fundamental reset operation of the PCI slot should
+be implemented based on the external power management entity for that case.
+
+On Firenze platform, PERST pin is accessible through bit#10 of PCI config register
+(offset: 0x80) for those PCI slots behind some PLX switch downstream ports. For
+those PCI slots, PERST pin is utilized to implement fundamental reset if external
+power management entity doesn't exist.
+
+For Apollo and Firenze platform, following PCI slot properties are exported through
+PCI device tree node except those generic properties (as above):
+
+ibm,slot-location-code  System location code string for the slot connector
+ibm,slot-label          Slot label, part of "ibm,slot-location-code"
