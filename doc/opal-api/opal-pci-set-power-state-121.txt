@@ -1,0 +1,24 @@
+OPAL_PCI_SET_POWER_STATE
+---------------------------
+
+Set PCI slot power state
+
+Parameters:
+	uint64_t id: PCI slot ID
+	uint64_t data: memory buffer pointer for power state
+
+Calling:
+
+Set PCI slot's power state. The power state is stored in buffer pointed
+by @data. The typical use is to hot add or remove adapters behind the
+indicated PCI slot (by @id) in PCI hotplug path.
+
+User will receive an asychronous message after calling the API. The message
+contains the API completion status: event (Power off or on), device node's
+phandle identifying the PCI slot, errcode (e.g. OPAL_SUCCESS).
+
+Return Codes:
+
+OPAL_SUCCESS - PCI hotplug on the slot is completed successfully
+OPAL_UNSUPPORTED - PCI hotplug isn't supported on the slot
+OPAL_PARAMETER - Parameter error
