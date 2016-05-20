@@ -231,6 +231,12 @@ struct pci_lsi_state {
 struct phb;
 extern int last_phb_id;
 
+enum phb_info {
+	PHB_INFO_MIN = 0,
+	PHB_INFO_RESERVED_PE_NUM,
+	PHB_INFO_MAX
+};
+
 struct phb_ops {
 	/*
 	 * Config space ops
@@ -254,6 +260,7 @@ struct phb_ops {
 	uint8_t (*choose_bus)(struct phb *phb, struct pci_device *bridge,
 			      uint8_t candidate, uint8_t *max_bus,
 			      bool *use_max);
+	int64_t (*get_info)(struct phb *phb, int ind);
 
 	/*
 	 * Device init method is called after a device has been detected

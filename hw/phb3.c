@@ -295,6 +295,21 @@ static uint8_t phb3_choose_bus(struct phb *phb __unused,
 	return candidate;
 }
 
+static int64_t phb3_get_info(struct phb *phb __unused, int ind)
+{
+	int64_t rc;
+
+	switch (ind) {
+	case PHB_INFO_RESERVED_PE_NUM:
+		rc = PHB3_RESERVED_PE_NUM;
+		break;
+	default:
+		rc = OPAL_PARAMETER;
+	}
+
+	return rc;
+}
+
 static void phb3_root_port_init(struct phb *phb, struct pci_device *dev,
 				int ecap, int aercap)
 {
@@ -3623,6 +3638,7 @@ static const struct phb_ops phb3_ops = {
 	.cfg_write16		= phb3_pcicfg_write16,
 	.cfg_write32		= phb3_pcicfg_write32,
 	.choose_bus		= phb3_choose_bus,
+	.get_info		= phb3_get_info,
 	.device_init		= phb3_device_init,
 	.presence_detect	= phb3_presence_detect,
 	.ioda_reset		= phb3_ioda_reset,
