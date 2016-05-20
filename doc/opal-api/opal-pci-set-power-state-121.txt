@@ -18,6 +18,11 @@ contains the API completion status: event (Power off or on), device node's
 phandle identifying the PCI slot, errcode (e.g. OPAL_SUCCESS). The API returns
 OPAL_ASYNC_COMPLETION for the case.
 
+User (e.g. CAPI developers) might make a specified slot offline or online
+without affecting its power state. User should use OPAL_PCI_SLOT_OFFLINE
+or OPAL_PCI_SLOT_ONLINE in the parameter. The API should returns OPAL_SUCCESS
+immediately without further asynchronous message sent.
+
 Return Codes:
 
 OPAL_SUCCESS - PCI hotplug on the slot is completed successfully

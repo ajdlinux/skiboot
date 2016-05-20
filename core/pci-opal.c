@@ -711,6 +711,7 @@ static int64_t opal_pci_set_power_state(uint64_t async_token,
 {
 	struct pci_slot *slot = pci_slot_find(id);
 	struct phb *phb = slot ? slot->phb : NULL;
+	struct pci_device *pd = slot ? slot->pd : NULL;
 	uint8_t *state = (uint8_t *)data;
 	int64_t rc;
 
@@ -735,6 +736,22 @@ static int64_t opal_pci_set_power_state(uint64_t async_token,
 
 		slot->async_token = async_token;
 		rc = slot->ops.set_power_state(slot, PCI_SLOT_POWER_ON);
+		break;
+	case OPAL_PCI_SLOT_OFFLINE:
+		if (!pd)
+			return OPAL_PARAMETER;
+
+		pci_remove_bus(phb, &pd->children);
+		rc = OPAL_SUCCESS;
+		break;
+	case OPAL_PCI_SLOT_ONLINE:
+		if (!pd)
+			return OPAL_PARAMETER;
+		pci_scan_bus(phb, pd->secondary_bus, pd->subordinate_bus,
+			     &pd->children, pd, true);
+		pci_add_device_nodes(phb, &pd->children, pd->dn,
+				     &phb->lstate, 0);
+		rc = OPAL_SUCCESS;
 		break;
 	default:
 		rc = OPAL_PARAMETER;
