@@ -130,17 +130,23 @@ static void flatten_dt_properties(void *fdt, const struct dt_node *dn)
 	}
 }
 
-static void flatten_dt_node(void *fdt, const struct dt_node *root)
+static void flatten_dt_node(void *fdt, const struct dt_node *root,
+			    bool exclusive)
 {
 	const struct dt_node *i;
 
 	FDT_DBG("FDT: node: %s\n", root->name);
-	dt_begin_node(fdt, root);
-	flatten_dt_properties(fdt, root);
-	list_for_each(&root->children, i, list)
-		flatten_dt_node(fdt, i);
 
-	dt_end_node(fdt);
+	if (!exclusive) {
+		dt_begin_node(fdt, root);
+		flatten_dt_properties(fdt, root);
+	}
+
+	list_for_each(&root->children, i, list)
+		flatten_dt_node(fdt, i, false);
+
+	if (!exclusive)
+		dt_end_node(fdt);
 }
 
 static void create_dtb_reservemap(void *fdt, const struct dt_node *root)
@@ -166,11 +172,13 @@ static void create_dtb_reservemap(void *fdt, const struct dt_node *root)
 }
 
 static int __create_dtb(void *fdt, size_t len,
-			const struct dt_node *root)
+			const struct dt_node *root,
+			bool exclusive)
 {
 	fdt_create(fdt, len);
-	create_dtb_reservemap(fdt, root);
-	flatten_dt_node(fdt, root);
+	if (root == dt_root && !exclusive)
+		create_dtb_reservemap(fdt, root);
+	flatten_dt_node(fdt, root, exclusive);
 
 	save_err(fdt_finish(fdt));
 	if (fdt_error) {
@@ -182,7 +190,7 @@ static int __create_dtb(void *fdt, size_t len,
 	return 0;
 }
 
-void *create_dtb(const struct dt_node *root)
+void *create_dtb(const struct dt_node *root, bool exclusive)
 {
 	void *fdt = NULL;
 	size_t len = DEVICE_TREE_MAX_SIZE;
@@ -198,7 +206,7 @@ void *create_dtb(const struct dt_node *root)
 			return NULL;
 		}
 
-		ret = __create_dtb(fdt, len, root);
+		ret = __create_dtb(fdt, len, root, exclusive);
 		if (ret) {
 			free(fdt);
 			fdt = NULL;
