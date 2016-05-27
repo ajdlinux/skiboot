@@ -3339,6 +3339,13 @@ static void phb3_init_capp_regs(struct phb3 *p, bool dma_mode)
 	xscom_read(p->chip_id, APC_MASTER_PB_CTRL + offset, &reg);
 	reg &= ~PPC_BITMASK(10, 11);
 	reg |= PPC_BIT(3);
+	if (dma_mode) {
+		/*
+		 * HW301991 - XSL sends PTE updates with nodal scope instead of
+		 * group scope. Force all commands to unlimited scope:
+		 */
+		reg |= PPC_BIT(4);
+	}
 	reg |= read_buffers << PPC_BITLSHIFT(11);
 	xscom_write(p->chip_id, APC_MASTER_PB_CTRL + offset, reg);
 
