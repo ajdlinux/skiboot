@@ -715,6 +715,9 @@ static int64_t opal_pci_set_power_state(uint64_t async_token,
 	uint8_t *state = (uint8_t *)data;
 	int64_t rc;
 
+	if (!slot) prlog(PR_ERR, "opal_pci_set_power_state Slot not found\n");
+	if (!phb) prlog(PR_ERR, "opal_pci_set_power_state PHB not found\n");
+	
 	if (!slot || !phb)
 		return OPAL_PARAMETER;
 
@@ -738,15 +741,16 @@ static int64_t opal_pci_set_power_state(uint64_t async_token,
 		rc = slot->ops.set_power_state(slot, PCI_SLOT_POWER_ON);
 		break;
 	case OPAL_PCI_SLOT_OFFLINE:
-		if (!pd)
+		if (!pd) { prlog(PR_ERR, "opal_pci_set_power_state PCI_SLOT_OFFLINE !pd\n");
 			return OPAL_PARAMETER;
-
+		}
 		pci_remove_bus(phb, &pd->children);
 		rc = OPAL_SUCCESS;
 		break;
 	case OPAL_PCI_SLOT_ONLINE:
-		if (!pd)
+		if (!pd) { prlog(PR_ERR, "opal_pci_set_power_state PCI_SLOT_ONLINE !pd\n");
 			return OPAL_PARAMETER;
+		}
 		pci_scan_bus(phb, pd->secondary_bus, pd->subordinate_bus,
 			     &pd->children, pd, true);
 		pci_add_device_nodes(phb, &pd->children, pd->dn,
@@ -754,6 +758,7 @@ static int64_t opal_pci_set_power_state(uint64_t async_token,
 		rc = OPAL_SUCCESS;
 		break;
 	default:
+		prlog(PR_ERR, "opal_pci_set_power_state fell through to default!\n");
 		rc = OPAL_PARAMETER;
 	}
 
