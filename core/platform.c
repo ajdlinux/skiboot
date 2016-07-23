@@ -54,9 +54,9 @@ static int64_t opal_cec_reboot(void)
 
 	console_complete_flush();
 
-#ifdef ENABLE_FAST_RESET
+#ifdef ENABLE_FAST_REBOOT
 	/* Try a fast reset first */
-	fast_reset();
+	fast_reboot();
 #endif
 	if (platform.cec_reboot)
 		return platform.cec_reboot();
