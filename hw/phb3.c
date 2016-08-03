@@ -3420,6 +3420,10 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	return OPAL_SUCCESS;
 }
 
+static int64_t disable_capi_mode(struct phb3 *p, uint64_t pe_number) {
+	return OPAL_UNSUPPORTED;
+}
+
 static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 				  uint64_t pe_number)
 {
@@ -3469,7 +3473,7 @@ static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 
 	switch (mode) {
 	case OPAL_PHB_CAPI_MODE_PCIE:
-		return OPAL_UNSUPPORTED;
+		return disable_capi_mode(p, pe_number);
 
 	case OPAL_PHB_CAPI_MODE_CAPI:
 		return enable_capi_mode(p, pe_number, false);
