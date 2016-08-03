@@ -3422,6 +3422,44 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	return OPAL_SUCCESS;
 }
 
+/* disable CAPI mode
+ * CAPP-held cache lines MUST be flushed before calling */
+static int64_t disable_capi_mode(struct phb3 *p) {
+	uint64_t reg;
+	uint32_t offset;
+
+	PHBDBG(p, "CAPP: Disabling CAPP mode\n");
+	offset = PHB3_CAPP_REG_OFFSET(p);
+
+	/* Disable snooping */
+	xscom_write(p->chip_id, SNOOP_CAPI_CONFIG + offset,
+		    0x0000000000000000);
+
+	/* clear bit 3 of APC master PB control reg to turn off "examing cresps"... */
+	xscom_read(p->chip_id, APC_MASTER_PB_CTRL + offset, &reg);
+	reg &= ~PPC_BIT(3);
+	xscom_write(p->chip_id, APC_MASTER_PB_CTRL + offset, reg);
+
+	/* clear bits 1-3 of APC Master CAPI Control??????? reg to disable PHBs... not sure what this does exactly? */
+	xscom_read(p->chip_id, APC_MASTER_CAPI_CTRL + offset, &reg);
+	reg &= ~PPC_BITMASK(1, 3);
+	xscom_write(p->chip_id, APC_MASTER_CAPI_CTRL + offset, reg);
+
+	/* clear bits 0/1 CAPP Error Status and Control reg */
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	reg &= ~PPC_BITMASK(0, 1);
+	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+
+	/* clear bit 0 PE Secure CAPP Enable reg */
+	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
+	reg &= ~PPC_BIT(0);
+	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
+
+	PHBDBG(p, "CAPP: CAPP Mode disabled\n");
+	
+	return OPAL_SUCCESS;
+}
+
 static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 				  uint64_t pe_number)
 {
@@ -3471,7 +3509,8 @@ static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 
 	switch (mode) {
 	case OPAL_PHB_CAPI_MODE_PCIE:
-		return OPAL_UNSUPPORTED;
+		// TODO: Check if we're not already in PCIe mode?
+		return disable_capi_mode(p);
 
 	case OPAL_PHB_CAPI_MODE_CAPI:
 		return enable_capi_mode(p, pe_number, false);
