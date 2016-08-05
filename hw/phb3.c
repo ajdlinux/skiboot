@@ -3444,7 +3444,7 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	xscom_write(p->chip_id, APC_MASTER_CAPI_CTRL + offset, reg);
 
 	/* clear bits 0/1 CAPP Error Status and Control reg */
-	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
 	reg &= ~PPC_BITMASK(0, 1);
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 
