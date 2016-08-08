@@ -3431,29 +3431,40 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	PHBDBG(p, "CAPP: Disabling CAPP mode\n");
 	offset = PHB3_CAPP_REG_OFFSET(p);
 
+	PHBDBG(p, "CAPP: disabling snooping\n");
 	/* Disable snooping */
 	xscom_write(p->chip_id, SNOOP_CAPI_CONFIG + offset,
 		    0x0000000000000000);
+	PHBDBG(p, "CAPP: snooping disabled\n");
 
+	PHBDBG(p, "CAPP: turning off examining cResps...\n");
+	
 	/* clear bit 3 of APC master PB control reg to turn off "examing cresps"... */
 	xscom_read(p->chip_id, APC_MASTER_PB_CTRL + offset, &reg);
 	reg &= ~PPC_BIT(3);
 	xscom_write(p->chip_id, APC_MASTER_PB_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: examining cResps disabled\n");
 
+	PHBDBG(p, "CAPP: clear APC Master CAPI Control...\n");
 	/* clear bits 1-3 of APC Master CAPI Control??????? reg to disable PHBs... not sure what this does exactly? */
 	xscom_read(p->chip_id, APC_MASTER_CAPI_CTRL + offset, &reg);
 	reg &= ~PPC_BITMASK(1, 3);
 	xscom_write(p->chip_id, APC_MASTER_CAPI_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: APC Master CAPI control cleared...\n");
 
+	PHBDBG(p, "CAPP: clearing CAPP Error Status and Control...\n");
 	/* clear bits 0/1 CAPP Error Status and Control reg */
 	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
 	reg &= ~PPC_BITMASK(0, 1);
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: CAPP Error Status/Ctrl cleared...\n");
 
+	PHBDBG(p, "CAPP: Clearing CAPP Enable...\n");
 	/* clear bit 0 PE Secure CAPP Enable reg */
 	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
 	reg &= ~PPC_BIT(0);
 	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
+	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
 
 	PHBDBG(p, "CAPP: CAPP Mode disabled\n");
 	
