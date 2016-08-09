@@ -3433,7 +3433,7 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	PHBDBG(p, "CAPP: going into recovery\n");
 	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
 	reg |= PPC_BIT(0);
-	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 	PHBDBG(p, "CAPP: recovery initiated, waiting for completion\n");
 
 	while (true) {
