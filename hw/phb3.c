@@ -3484,7 +3484,7 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 //	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
 //	reg &= ~PPC_BIT(0);
 //	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
-	PHBDBG(p, "CAPP: PE_CAPP_EN + PE_REG_OFFSET(p) = %llx. p->spci_xscom + 0x3 = %llx\n", PE_CAPP_EN + PE_REG_OFFSET(p), p->spci_xscom + 0x3);
+	PHBDBG(p, "CAPP: PE_CAPP_EN + PE_REG_OFFSET(p) = %x. p->spci_xscom + 0x3 = %llx\n", PE_CAPP_EN + PE_REG_OFFSET(p), p->spci_xscom + 0x3);
 	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
 
