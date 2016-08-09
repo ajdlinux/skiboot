@@ -3430,9 +3430,9 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	offset = PHB3_CAPP_REG_OFFSET(p);
 
 // Place the CAPP into Recovery
-	PHBDBG(p, "CAPP: going into recovery\n");
+/*	PHBDBG(p, "CAPP: going into recovery\n");
 	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
-	reg |= PPC_BIT(0);
+	reg |= PPC_BIT(0); // TODO: I don't think writing to bit 0 initiates a recovery...
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 	PHBDBG(p, "CAPP: recovery initiated, waiting for completion\n");
 
@@ -3442,7 +3442,14 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 			break;
 	}
 	PHBDBG(p, "CAPP: recovery complete\n");
-
+*/
+	/* if we get forced recovery to work, this should be done on entry to recovery */
+	PHBDBG(p, "CAPP: disabling TLBI\n");
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	reg |= PPC_BIT(0);
+	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: TLBI disabled\n");
+/**/
 	
 	PHBDBG(p, "CAPP: disabling snooping\n");
 	/* Disable snooping */
@@ -3474,9 +3481,11 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 
 	PHBDBG(p, "CAPP: Clearing CAPP Enable...\n");
 	/* clear bit 0 PE Secure CAPP Enable reg */
-	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
-	reg &= ~PPC_BIT(0);
-	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
+//	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
+//	reg &= ~PPC_BIT(0);
+//	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
+	PHBDBG(p, "CAPP: PE_CAPP_EN + PE_REG_OFFSET(p) = %x. p->spci_xscom + 0x3 = %x\n", PE_CAPP_EN + PE_REG_OFFSET(p), p->spci_xscom + 0x3);
+	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
 
 	PHBDBG(p, "CAPP: CAPP Mode disabled\n");
