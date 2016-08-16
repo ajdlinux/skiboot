@@ -1477,6 +1477,13 @@ void pci_reset(void)
 		if (!phb)
 			continue;
 		__pci_reset(&phb->devices);
+
+
+		if (phb->ops->set_capi_mode) {
+			phb->ops->set_capi_mode(phb, OPAL_PHB_CAPI_MODE_PCIE, 0);
+		}
+
+		
 		if (phb->ops->ioda_reset)
 			phb->ops->ioda_reset(phb, true);
 	}

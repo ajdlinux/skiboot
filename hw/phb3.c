@@ -3542,7 +3542,11 @@ static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 
 	switch (mode) {
 	case OPAL_PHB_CAPI_MODE_PCIE:
-		// TODO: Check if we're not already in PCIe mode?
+		xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
+		if (!(reg & PPC_BIT(0))) {
+			PHBDBG(p, "Already in non-CAPP mode\n");
+			break;
+		}
 		return disable_capi_mode(p);
 
 	case OPAL_PHB_CAPI_MODE_CAPI:
