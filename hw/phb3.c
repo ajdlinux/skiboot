@@ -3501,6 +3501,7 @@ static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 	uint64_t reg;
 	uint64_t read_buffers;
 	uint32_t offset;
+	int64_t rc;
 	u8 mask;
 
 	if (!CAPP_UCODE_LOADED(chip, p)) {
@@ -3547,7 +3548,11 @@ static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 			PHBDBG(p, "Already in non-CAPP mode\n");
 			break;
 		}
-		return disable_capi_mode(p);
+		rc = disable_capi_mode(p);
+		lock(&capi_lock);
+		chip->capp_phb3_attached_mask &= ~(1 << p->index);
+		unlock(&capi_lock);
+		return rc;
 
 	case OPAL_PHB_CAPI_MODE_CAPI:
 		return enable_capi_mode(p, pe_number, false);
