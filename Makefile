@@ -18,7 +18,7 @@ endif
 #
 # Main debug switch
 #
-DEBUG ?= 1
+DEBUG ?= 0
 
 #
 # Set to enable SLW bits
