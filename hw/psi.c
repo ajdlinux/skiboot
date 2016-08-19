@@ -378,13 +378,21 @@ static uint64_t psi_p7_irq_attributes(struct irq_source *is __unused,
 	return IRQ_ATTR_TARGET_OPAL | IRQ_ATTR_TARGET_FREQUENT;
 }
 
+static const uint32_t psi_p8_irq_to_xivr[P8_IRQ_PSI_IRQ_COUNT] = {
+	[P8_IRQ_PSI_FSP]	= PSIHB_XIVR_FSP,
+	[P8_IRQ_PSI_OCC]	= PSIHB_XIVR_OCC,
+	[P8_IRQ_PSI_FSI]	= PSIHB_XIVR_FSI,
+	[P8_IRQ_PSI_LPC]	= PSIHB_XIVR_LPC,
+	[P8_IRQ_PSI_LOCAL_ERR]	= PSIHB_XIVR_LOCAL_ERR,
+	[P8_IRQ_PSI_EXTERNAL]= PSIHB_XIVR_HOST_ERR,
+};
 
 static void psi_cleanup_irq(struct psi *psi)
 {
 	uint32_t irq;
 	uint64_t xivr, xivr_p;
 
-	for (irq = 0; irq < P8_IRQ_PSI_ALL_COUNT; irq++) {
+	for (irq = 0; irq < P8_IRQ_PSI_IRQ_COUNT; irq++) {
 		prlog(PR_DEBUG, "PSI[0x%03x]: Cleaning up IRQ %d\n",
 		      psi->chip_id, irq);
 
@@ -424,14 +432,6 @@ static const struct irq_source_ops psi_p7_irq_ops = {
 	.attributes = psi_p7_irq_attributes,
 };
 
-static const uint32_t psi_p8_irq_to_xivr[P8_IRQ_PSI_ALL_COUNT] = {
-	[P8_IRQ_PSI_FSP]	= PSIHB_XIVR_FSP,
-	[P8_IRQ_PSI_OCC]	= PSIHB_XIVR_OCC,
-	[P8_IRQ_PSI_FSI]	= PSIHB_XIVR_FSI,
-	[P8_IRQ_PSI_LPC]	= PSIHB_XIVR_LPC,
-	[P8_IRQ_PSI_LOCAL_ERR]	= PSIHB_XIVR_LOCAL_ERR,
-	[P8_IRQ_PSI_HOST_ERR]	= PSIHB_XIVR_HOST_ERR,
-};
 
 static int64_t psi_p8_set_xive(struct irq_source *is, uint32_t isn,
 			       uint16_t server, uint8_t priority)
@@ -440,7 +440,7 @@ static int64_t psi_p8_set_xive(struct irq_source *is, uint32_t isn,
 	uint64_t xivr_p, xivr;
 	uint32_t irq_idx = isn & 7;
 
-	if (irq_idx >= P8_IRQ_PSI_ALL_COUNT)
+	if (irq_idx >= P8_IRQ_PSI_IRQ_COUNT)
  		return OPAL_PARAMETER;
 
 	xivr_p = psi_p8_irq_to_xivr[irq_idx];
@@ -462,7 +462,7 @@ static int64_t psi_p8_get_xive(struct irq_source *is, uint32_t isn __unused,
 	uint64_t xivr_p, xivr;
 	uint32_t irq_idx = isn & 7;
 
-	if (irq_idx >= P8_IRQ_PSI_ALL_COUNT)
+	if (irq_idx >= P8_IRQ_PSI_IRQ_COUNT)
  		return OPAL_PARAMETER;
 	xivr_p = psi_p8_irq_to_xivr[irq_idx];
 
