@@ -610,6 +610,18 @@ static void phb3_init_ioda_cache(struct phb3 *p)
 	memset(p->m64b_cache, 0x0, sizeof(p->m64b_cache));
 }
 
+//////////////////////////////////////////////////////////
+static void phb3_fenced_at(struct phb3 *p, int linenum) {
+	if (phb3_fenced(p)) {
+		PHBDBG(p, "%s: line %d: FENCED!\n", __func__, linenum);
+		PHBDBG(p, "%s: line %d: Error vals: err_src %d, err_class %d, err_bit%d\n", __func__, linenum, p->err.err_src, p->err.err_class, p->err.err_bit);
+	} else {
+		PHBDBG(p, "%s: line %d: NOT fenced!\n", __func__, linenum);
+	}
+}
+
+#define PHB3_FENCED_AT(p) phb3_fenced_at(p, __LINE__)
+
 /* phb3_ioda_reset - Reset the IODA tables
  *
  * @purge: If true, the cache is cleared and the cleared values
@@ -627,12 +639,13 @@ static int64_t phb3_ioda_reset(struct phb *phb, bool purge)
 	uint64_t *pdata64, data64;
 	uint32_t i;
 
+	PHB3_FENCED_AT(p);
 	if (purge) {
 		prlog(PR_DEBUG, "PHB%d: Purging all IODA tables...\n",
 		      p->phb.opal_id);
 		phb3_init_ioda_cache(p);
 	}
-
+	PHB3_FENCED_AT(p);
 	/* Init_27..28 - LIXVT */
 	phb3_ioda_sel(p, IODA2_TBL_LXIVT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->lxive_cache); i++) {
@@ -643,52 +656,52 @@ static int64_t phb3_ioda_reset(struct phb *phb, bool purge)
 		data64 = SETFIELD(IODA2_LXIVT_PRIORITY, data64, prio);
 		out_be64(p->regs + PHB_IODA_DATA0, data64);
 	}
-
+	PHB3_FENCED_AT(p);
 	/* Init_29..30 - MRT */
 	phb3_ioda_sel(p, IODA2_TBL_MRT, 0, true);
 	for (i = 0; i < 8; i++)
 		out_be64(p->regs + PHB_IODA_DATA0, 0);
-
+	PHB3_FENCED_AT(p);
 	/* Init_31..32 - TVT */
 	phb3_ioda_sel(p, IODA2_TBL_TVT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->tve_cache); i++)
 		out_be64(p->regs + PHB_IODA_DATA0, p->tve_cache[i]);
-
+	PHB3_FENCED_AT(p);
 	/* Init_33..34 - M64BT */
 	phb3_ioda_sel(p, IODA2_TBL_M64BT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->m64b_cache); i++)
 		out_be64(p->regs + PHB_IODA_DATA0, p->m64b_cache[i]);
-
+	PHB3_FENCED_AT(p);
 	/* Init_35..36 - M32DT */
 	phb3_ioda_sel(p, IODA2_TBL_M32DT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->m32d_cache); i++)
 		out_be64(p->regs + PHB_IODA_DATA0, p->m32d_cache[i]);
-
+	PHB3_FENCED_AT(p);
 	/* Load RTE, PELTV */
 	if (p->tbl_rtt)
 		memcpy((void *)p->tbl_rtt, p->rte_cache, RTT_TABLE_SIZE);
 	if (p->tbl_peltv)
 		memcpy((void *)p->tbl_peltv, p->peltv_cache, PELTV_TABLE_SIZE);
-
+	PHB3_FENCED_AT(p);
 	/* Load IVT */
 	if (p->tbl_ivt) {
 		pdata64 = (uint64_t *)p->tbl_ivt;
 		for (i = 0; i < IVT_TABLE_ENTRIES; i++)
 			pdata64[i * IVT_TABLE_STRIDE] = p->ive_cache[i];
 	}
-
+	PHB3_FENCED_AT(p);
 	/* Invalidate RTE, IVE, TCE cache */
 	out_be64(p->regs + PHB_RTC_INVALIDATE, PHB_RTC_INVALIDATE_ALL);
 	out_be64(p->regs + PHB_IVC_INVALIDATE, PHB_IVC_INVALIDATE_ALL);
 	out_be64(p->regs + PHB_TCE_KILL, PHB_TCE_KILL_ALL);
-
+	PHB3_FENCED_AT(p);
 	/* Clear RBA */
 	if (p->rev >= PHB3_REV_MURANO_DD20) {
 		phb3_ioda_sel(p, IODA2_TBL_RBA, 0, true);
 		for (i = 0; i < 32; i++)
 			out_be64(p->regs + PHB_IODA_DATA0, 0x0ul);
 	}
-
+	PHB3_FENCED_AT(p);
 	/* Clear PEST & PEEV */
 	for (i = 0; i < PHB3_MAX_PE_NUM; i++) {
 		uint64_t pesta, pestb;
@@ -706,11 +719,12 @@ static int64_t phb3_ioda_reset(struct phb *phb, bool purge)
 			       i, (pesta & IODA2_PESTA_MMIO_FROZEN) ? "DMA" : "",
 			       (pestb & IODA2_PESTB_DMA_STOPPED) ? "MMIO" : "");
 	}
-
+	PHB3_FENCED_AT(p);
 	phb3_ioda_sel(p, IODA2_TBL_PEEV, 0, true);
 	for (i = 0; i < 4; i++)
 		out_be64(p->regs + PHB_IODA_DATA0, 0);
-
+	PHB3_FENCED_AT(p);
+	
 	return OPAL_SUCCESS;
 }
 
@@ -3299,17 +3313,29 @@ static void phb3_init_capp_errors(struct phb3 *p)
 #define PE_REG_OFFSET(p) \
 	((PHB3_IS_NAPLES(p) && (p)->index) ? 0x40 : 0x0)
 
+/////////////////////////////////////////
+static void dump_scom(struct phb3 *p, uint64_t scom, int line_num) {
+	uint64_t reg;
+	xscom_read(p->chip_id, scom, &reg);
+	PHBDBG(p, "Line: %d, SCOM %llx = %llx\n", line_num, scom, reg);
+}
+
+#define DUMP_SCOM(p, scom) dump_scom(p, scom, __LINE__)
+	
+/////////////////////////////////////////
+
 static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mode)
 {
 	uint64_t reg;
 	int i;
 
 	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
+	DUMP_SCOM(p, PE_CAPP_EN + PE_REG_OFFSET(p));
 	if (reg & PPC_BIT(0)) {
 		PHBDBG(p, "Already in CAPP mode\n");
 	}
 
-	/* poll cqstat */
+	/* poll cqstat */ // TODO: Copy this to disable?
 	for (i = 0; i < 500000; i++) {
 		xscom_read(p->chip_id, p->pe_xscom + 0xf, &reg);
 		if (!(reg & 0xC000000000000000))
@@ -3322,6 +3348,7 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	}
 
 	/* pb aib capp enable */
+	DUMP_SCOM(p, p->spci_xscom + 0x3);
 	reg = PPC_BIT(0); /* capp enable */
 	if (dma_mode)
 		reg |= PPC_BIT(1); /* capp dma mode */
@@ -3332,25 +3359,32 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	*/
 
 	/* aib mode */
+	DUMP_SCOM(p, p->pci_xscom + 0xf);
 	xscom_read(p->chip_id, p->pci_xscom + 0xf, &reg);
 	reg &= ~PPC_BITMASK(6,7);
 	reg |= PPC_BIT(8);
 	reg |= PPC_BITMASK(40, 41);
 	reg &= ~PPC_BIT(42);
 	xscom_write(p->chip_id, p->pci_xscom + 0xf, reg);
+	DUMP_SCOM(p, p->pci_xscom + 0xf);
 
 	/* pci hwconf0 */
+	DUMP_SCOM(p, p->pe_xscom + 0x18);
 	xscom_read(p->chip_id, p->pe_xscom + 0x18, &reg);
 	reg |= PPC_BIT(14);
 	reg &= ~PPC_BIT(15);
 	xscom_write(p->chip_id, p->pe_xscom + 0x18, reg);
+	DUMP_SCOM(p, p->pe_xscom + 0x18);
 
 	/* pci hwconf1 */
+	DUMP_SCOM(p, p->pe_xscom + 0x19);
 	xscom_read(p->chip_id, p->pe_xscom + 0x19, &reg);
 	reg &= ~PPC_BITMASK(17,18);
 	xscom_write(p->chip_id, p->pe_xscom + 0x19, reg);
+	DUMP_SCOM(p, p->pe_xscom + 0x19);
 
 	/* aib tx cmd cred */
+	DUMP_SCOM(p, p->pci_xscom + 0xd);
 	xscom_read(p->chip_id, p->pci_xscom + 0xd, &reg);
 	if (dma_mode) {
 		/*
@@ -3364,13 +3398,18 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 		reg |= PPC_BIT(47);
 	}
 	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
+	DUMP_SCOM(p, p->pci_xscom + 0xd);
 
+
+	//////////// What is this?
 	xscom_write(p->chip_id, p->pci_xscom + 0xc, 0xff00000000000000ull);
 
 	/* pci mode ctl */
+	DUMP_SCOM(p, p->pe_xscom + 0xb);
 	xscom_read(p->chip_id, p->pe_xscom + 0xb, &reg);
 	reg |= PPC_BIT(25);
 	xscom_write(p->chip_id, p->pe_xscom + 0xb, reg);
+	DUMP_SCOM(p, p->pe_xscom + 0xb);
 
 	/* set tve no translate mode allow mmio window */
 	memset(p->tve_cache, 0x0, sizeof(p->tve_cache));
@@ -3432,6 +3471,14 @@ static void dump_tve_cache(struct phb3 *p) {
 	}
 }
 
+static void dump_m64b_cache(struct phb3 *p) {
+	int i;
+	PHBDBG(p, "M64B Cache Dump:\n");
+	for (i = 0; i < (sizeof(p->m64b_cache) / sizeof(p->m64b_cache[0])); i++) {
+		PHBDBG(p, "M64B Entry %d: %llx\n", i, p->m64b_cache[i]);
+	}
+}
+
 /* disable CAPI mode
  * CAPP-held cache lines MUST be flushed before calling */
 static int64_t disable_capi_mode(struct phb3 *p) {
@@ -3457,6 +3504,16 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 */
 
 	dump_tve_cache(p);
+	dump_m64b_cache(p);
+
+	DUMP_SCOM(p, PE_CAPP_EN + PE_REG_OFFSET(p));
+	DUMP_SCOM(p, p->spci_xscom + 0x3);
+	DUMP_SCOM(p, p->pci_xscom + 0xf);
+	DUMP_SCOM(p, p->pe_xscom + 0x18);
+	DUMP_SCOM(p, p->pe_xscom + 0x19);
+	DUMP_SCOM(p, p->pci_xscom + 0xd);
+	DUMP_SCOM(p, p->pe_xscom + 0xb);
+	
 	
 	/* if we get forced recovery to work, this should be done on entry to recovery */
 	PHBDBG(p, "CAPP: disabling TLBI\n");
@@ -3494,6 +3551,46 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 //	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 //	PHBDBG(p, "CAPP: CAPP Error Status/Ctrl cleared...\n");
 
+
+
+
+
+	PHBDBG(p, "CAPP: Clearing other random bits and pieces\n");
+
+	// PE Bus AIB Mode Bits
+	xscom_read(p->chip_id, p->pci_xscom + 0xf, &reg);
+	reg &= ~PPC_BITMASK(40, 41);
+	reg |= PPC_BITMASK(7, 8);
+	reg &= ~PPC_BITMASK(40, 42);
+	xscom_write(p->chip_id, p->pci_xscom + 0xf, reg);
+
+	// PCI hwconf0
+	xscom_read(p->chip_id, p->pe_xscom + 0x18, &reg);
+	reg &= ~PPC_BIT(14);
+	reg |= PPC_BIT(15);
+	xscom_write(p->chip_id, p->pe_xscom + 0x18, reg);
+
+	// PCI hwconf1
+	xscom_read(p->chip_id, p->pe_xscom + 0x19, &reg);
+	reg |= PPC_BITMASK(17,18);
+	xscom_write(p->chip_id, p->pe_xscom + 0x19, reg);
+
+	// AIB TX Command Credit
+	xscom_read(p->chip_id, p->pci_xscom + 0xd, &reg);
+	reg |= PPC_BIT(42);
+	reg &= ~PPC_BITMASK(43, 47);
+	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
+
+	// PBCQ Mode Control Register
+	xscom_read(p->chip_id, p->pe_xscom + 0xb, &reg);
+	reg &= ~PPC_BIT(25);
+	xscom_write(p->chip_id, p->pe_xscom + 0xb, reg);
+
+
+	// TODO: Some more SCOMs in phb3_init_capp_regs() and phb3_init_capp_errors()...
+
+
+
 	PHBDBG(p, "CAPP: Clearing CAPP Enable...\n");
 	/* clear bit 0 PE Secure CAPP Enable reg */
 //	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
@@ -3502,6 +3599,9 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	PHBDBG(p, "CAPP: PE_CAPP_EN + PE_REG_OFFSET(p) = %x. p->spci_xscom + 0x3 = %llx\n", PE_CAPP_EN + PE_REG_OFFSET(p), p->spci_xscom + 0x3);
 	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
+
+
+	
 
 	PHBDBG(p, "CAPP: CAPP Mode disabled\n");
 	
