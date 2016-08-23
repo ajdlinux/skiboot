@@ -3427,7 +3427,7 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 static void dump_tve_cache(struct phb3 *p) {
 	int i;
 	PHBDBG(p, "TVE Cache Dump:\n");
-	for (i = 0; i < sizeof(p->tve_cache); i++) {
+	for (i = 0; i < (sizeof(p->tve_cache) / sizeof(p->tve_cache[0])); i++) {
 		PHBDBG(p, "TVE Entry %d: %llx\n", i, p->tve_cache[i]);
 	}
 }
