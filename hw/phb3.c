@@ -3420,6 +3420,18 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	return OPAL_SUCCESS;
 }
 
+
+
+
+////////////////////////////////////////////////////////////////////////////
+static void dump_tve_cache(struct phb3 *p) {
+	int i;
+	PHBDBG(p, "TVE Cache Dump:\n");
+	for (i = 0; i < sizeof(p->tve_cache); i++) {
+		PHBDBG(p, "TVE Entry %d: %llx\n", i, p->tve_cache[i]);
+	}
+}
+
 /* disable CAPI mode
  * CAPP-held cache lines MUST be flushed before calling */
 static int64_t disable_capi_mode(struct phb3 *p) {
@@ -3443,6 +3455,9 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	}
 	PHBDBG(p, "CAPP: recovery complete\n");
 */
+
+	dump_tve_cache();
+	
 	/* if we get forced recovery to work, this should be done on entry to recovery */
 	PHBDBG(p, "CAPP: disabling TLBI\n");
 	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
