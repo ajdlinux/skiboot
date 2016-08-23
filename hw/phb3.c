@@ -3456,7 +3456,7 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	PHBDBG(p, "CAPP: recovery complete\n");
 */
 
-	dump_tve_cache();
+	dump_tve_cache(p);
 	
 	/* if we get forced recovery to work, this should be done on entry to recovery */
 	PHBDBG(p, "CAPP: disabling TLBI\n");
