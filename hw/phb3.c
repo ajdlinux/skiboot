@@ -2417,8 +2417,8 @@ static void do_capp_recovery_scoms(struct phb3 *p)
 	reg &= ~(PPC_BIT(0) | PPC_BIT(1));
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 }
-
-static int64_t phb3_creset(struct pci_slot *slot)
+static int64_t disable_capi_mode(struct phb3 *p);
+static int64_t phb3_creset(struct pci_slot *slot, bool capi_disable)
 {
 	struct phb3 *p = phb_to_phb3(slot->phb);
 	uint64_t cqsts, val;
@@ -2448,6 +2448,10 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		 */
 		if (!phb3_fenced(p))
 			xscom_write(p->chip_id, p->pe_xscom + 0x2, 0x000000f000000000ull);
+		/* CAPI magic */
+		if (capi_disable) {
+			disable_capi_mode(p);
+		}
 
 		/* Clear errors in NFIR and raise ETU reset */
 		xscom_read(p->chip_id, p->pe_xscom + 0x0, &p->nfir_cache);

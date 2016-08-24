@@ -1969,7 +1969,7 @@ static int64_t phb4_pfreset(struct pci_slot *slot)
 	return OPAL_HARDWARE;
 }
 
-static int64_t phb4_creset(struct pci_slot *slot)
+static int64_t phb4_creset(struct pci_slot *slot, bool __unused capi_disable)
 {
 	struct phb4 *p = phb_to_phb4(slot->phb);
 
