@@ -3406,8 +3406,7 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
 	DUMP_SCOM(p, p->pci_xscom + 0xd);
 
-
-	//////////// What is this?
+	// AIB TX Credit Init Timer
 	xscom_write(p->chip_id, p->pci_xscom + 0xc, 0xff00000000000000ull);
 
 	/* pci mode ctl */
@@ -3465,8 +3464,11 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	return OPAL_SUCCESS;
 }
 
-/* disable CAPI mode
- * CAPP-held cache lines MUST be flushed before calling */
+/*
+ * Disable CAPI mode on a PHB.
+ *
+ * Must be done while PHB is fenced.
+ */
 static int64_t disable_capi_mode(struct phb3 *p) {
 	uint64_t reg;
 	uint32_t offset;
@@ -3495,7 +3497,6 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	reg |= PPC_BIT(0);
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 	PHBDBG(p, "CAPP: TLBI disabled\n");
-/**/
 	
 	PHBDBG(p, "CAPP: disabling snooping\n");
 	/* Disable snooping */
@@ -3525,10 +3526,6 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 //	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 //	PHBDBG(p, "CAPP: CAPP Error Status/Ctrl cleared...\n");
 
-
-
-
-
 	PHBDBG(p, "CAPP: Clearing other random bits and pieces\n");
 
 	// PE Bus AIB Mode Bits
@@ -3555,29 +3552,19 @@ static int64_t disable_capi_mode(struct phb3 *p) {
 	reg &= ~PPC_BITMASK(43, 47);
 	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
 
+	// AIB TX Credit Init Timer
+	xscom_write(p->chip_id, p->pci_xscom + 0xc, 0xff00000000000000ull);
+
 	// PBCQ Mode Control Register
 	xscom_read(p->chip_id, p->pe_xscom + 0xb, &reg);
 	reg &= ~PPC_BIT(25);
 	xscom_write(p->chip_id, p->pe_xscom + 0xb, reg);
 
-
 	// TODO: Some more SCOMs in phb3_init_capp_regs() and phb3_init_capp_errors()...
 
-
-
 	PHBDBG(p, "CAPP: Clearing CAPP Enable...\n");
-	/* clear bit 0 PE Secure CAPP Enable reg */
-//	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
-//	reg &= ~PPC_BIT(0);
-//	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), reg);
-	PHBDBG(p, "CAPP: PE_CAPP_EN + PE_REG_OFFSET(p) = %x. p->spci_xscom + 0x3 = %llx\n", PE_CAPP_EN + PE_REG_OFFSET(p), p->spci_xscom + 0x3);
 	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
-
-
-	
-
-	PHBDBG(p, "CAPP: CAPP Mode disabled\n");
 	
 	return OPAL_SUCCESS;
 }
