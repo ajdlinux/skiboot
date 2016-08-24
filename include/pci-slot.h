@@ -106,7 +106,7 @@ struct pci_slot_ops {
 	/* SM based functions for reset */
 	void (*prepare_link_change)(struct pci_slot *slot, bool is_up);
 	int64_t (*poll_link)(struct pci_slot *slot);
-	int64_t (*creset)(struct pci_slot *slot);
+	int64_t (*creset)(struct pci_slot *slot, bool disable_capi);
 	int64_t (*freset)(struct pci_slot *slot);
 	int64_t (*pfreset)(struct pci_slot *slot);
 	int64_t (*hreset)(struct pci_slot *slot);

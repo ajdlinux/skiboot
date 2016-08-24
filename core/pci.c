@@ -1464,7 +1464,7 @@ static void __pci_reset(struct list_head *list)
 void pci_reset(void)
 {
 	unsigned int i;
-
+	struct pci_slot *slot;
 	prlog(PR_NOTICE, "PCI: Clearing all devices...\n");
 
 	/* This is a remnant of fast-reboot, not currently used */
@@ -1478,10 +1478,20 @@ void pci_reset(void)
 			continue;
 		__pci_reset(&phb->devices);
 
-
-		if (phb->ops->set_capi_mode) {
-			phb->ops->set_capi_mode(phb, OPAL_PHB_CAPI_MODE_PCIE, 0);
+		slot = phb->slot;
+		if (!slot || !slot->ops.creset) {
+			PCINOTICE(phb, 0, "Can't CRESET\n");
+		} else {
+			int rc = slot->ops.creset(slot, true);
+			while (rc > 0) {
+				time_wait(rc);
+				rc = slot->ops.poll(slot);
+			}
 		}
+		
+//		if (phb->ops->set_capi_mode) {
+//			phb->ops->set_capi_mode(phb, OPAL_PHB_CAPI_MODE_PCIE, 0);
+//		}
 
 		
 		if (phb->ops->ioda_reset)

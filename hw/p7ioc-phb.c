@@ -2246,7 +2246,7 @@ out:
 	return OPAL_HARDWARE;
 }
 
-static int64_t p7ioc_creset(struct pci_slot *slot)
+static int64_t p7ioc_creset(struct pci_slot *slot, bool __unused capi_disable)
 {
 	struct p7ioc_phb *p = phb_to_p7ioc_phb(slot->phb);
 	struct p7ioc *ioc = p->ioc;
