@@ -544,7 +544,7 @@ static int64_t opal_pci_reset(uint64_t id, uint8_t reset_scope,
 		if (assert_state != OPAL_ASSERT_RESET)
 			break;
 
-		rc = slot->ops.creset(slot, false);
+		rc = slot->ops.creset(slot, true);
 		if (rc < 0)
 			prlog(PR_ERR, "SLOT-%016llx: Error %lld on complete reset\n",
 			      slot->id, rc);
