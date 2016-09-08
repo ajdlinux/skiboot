@@ -961,3 +961,20 @@ static int64_t opal_pci_set_phb_capi_mode(uint64_t phb_id, uint64_t mode, uint64
 	return rc;
 }
 opal_call(OPAL_PCI_SET_PHB_CAPI_MODE, opal_pci_set_phb_capi_mode, 3);
+
+static int64_t opal_pci_get_phb_capi_mode(uint64_t phb_id)
+{
+	struct phb *phb = pci_get_phb(phb_id);
+	int64_t rc;
+
+	if (!phb)
+		return OPAL_PARAMETER;
+	if (!phb->ops->get_capi_mode)
+		return OPAL_UNSUPPORTED;
+
+	phb_lock(phb);
+	rc = phb->ops->get_capi_mode(phb);
+	phb_unlock(phb);
+	return rc;
+}
+opal_call(OPAL_PCI_GET_PHB_CAPI_MODE, opal_pci_get_phb_capi_mode, 1);
