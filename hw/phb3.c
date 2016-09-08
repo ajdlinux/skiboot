@@ -3492,6 +3492,19 @@ static int64_t enable_capi_mode(struct phb3 *p, uint64_t pe_number, bool dma_mod
 	return OPAL_SUCCESS;
 }
 
+static int64_t phb3_get_capi_mode(struct phb *phb)
+{
+	struct phb3 *p = phb_to_phb3(phb);
+	struct proc_chip *chip = get_chip(p->chip_id);
+	int64_t ret;
+	lock(&capi_lock);
+	ret = (chip->capp_phb3_attached_mask & (1 << p->index)) ?
+		OPAL_PHB_CAPI_MODE_CAPI :
+		OPAL_PHB_CAPI_MODE_PCIE;
+        unlock(&capi_lock);
+	return ret;
+}
+
 static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
 				  uint64_t pe_number)
 {
@@ -3621,6 +3634,7 @@ static const struct phb_ops phb3_ops = {
 	.get_diag_data		= NULL,
 	.get_diag_data2		= phb3_get_diag_data,
 	.set_capi_mode		= phb3_set_capi_mode,
+	.get_capi_mode		= phb3_get_capi_mode,
 	.set_capp_recovery	= phb3_set_capp_recovery,
 };
 
