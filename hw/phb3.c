@@ -3451,12 +3451,14 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	
 	PHBDBG(p, "CAPP: Disabling CAPP mode\n");
 	lock(&capi_lock);
-	if (!(chip->capp_phb3_attached_mask & (1 << p->index)))
-		PHBINF(p, "CAPP: WARNING: may not be attached!\n");
 	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
 	if (!(reg & PPC_BIT(0))) {
-		PHBINF(p, "CAPP: WARNING: not in CAPI mode!\n");
+		PHBINF(p, "CAPP: Not in CAPI mode\n");
+		return OPAL_SUCCESS;
 	}
+	if (!(chip->capp_phb3_attached_mask & (1 << p->index)))
+		PHBINF(p, "CAPP: WARNING: may not be attached!\n");
+
 	offset = PHB3_CAPP_REG_OFFSET(p);
 	
 	/* if we get forced recovery to work, this should be done on entry to recovery */
@@ -3528,7 +3530,8 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
 
 	chip->capp_phb3_attached_mask &= ~(1 << p->index);
-	
+
+	do_capp_recovery_scoms(p);
 	unlock(&capi_lock);
 	
 	return OPAL_SUCCESS;
