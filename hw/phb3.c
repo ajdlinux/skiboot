@@ -39,6 +39,7 @@
 #undef DISABLE_ERR_INTS
 
 static void phb3_init_hw(struct phb3 *p, bool first_init);
+static int64_t disable_capi_mode(struct phb3 *p);
 
 #define PHBDBG(p, fmt, a...)	prlog(PR_DEBUG, "PHB#%04x: " fmt, \
 				      (p)->phb.opal_id, ## a)
@@ -2436,7 +2437,9 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		 */
 		if (!phb3_fenced(p))
 			xscom_write(p->chip_id, p->pe_xscom + 0x2, 0x000000f000000000ull);
-
+		/* Disable CAPI mode */
+		disable_capi_mode(p);
+		
 		/* Clear errors in NFIR and raise ETU reset */
 		xscom_read(p->chip_id, p->pe_xscom + 0x0, &p->nfir_cache);
 
@@ -3433,6 +3436,102 @@ static int64_t phb3_get_capi_mode(struct phb *phb)
 		OPAL_PHB_CAPI_MODE_PCIE;
         unlock(&capi_lock);
 	return ret;
+}
+
+/*
+ * Disable CAPI mode on a PHB.
+ *
+ * Must be done while PHB is fenced.
+ */
+static int64_t disable_capi_mode(struct phb3 *p)
+{
+	struct proc_chip *chip = get_chip(p->chip_id);
+	uint64_t reg;
+	uint32_t offset;
+	
+	PHBDBG(p, "CAPP: Disabling CAPP mode\n");
+	lock(&capi_lock);
+	if (!(chip->capp_phb3_attached_mask & (1 << p->index)))
+		PHBINF(p, "CAPP: WARNING: may not be attached!\n");
+	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
+	if (!(reg & PPC_BIT(0))) {
+		PHBINF(p, "CAPP: WARNING: not in CAPI mode!\n");
+	}
+	offset = PHB3_CAPP_REG_OFFSET(p);
+	
+	/* if we get forced recovery to work, this should be done on entry to recovery */
+	PHBDBG(p, "CAPP: disabling TLBI\n");
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	reg |= PPC_BIT(0);
+	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: TLBI disabled\n");
+	
+	PHBDBG(p, "CAPP: disabling snooping\n");
+	/* Disable snooping */
+	xscom_write(p->chip_id, SNOOP_CAPI_CONFIG + offset,
+		    0x0000000000000000);
+	PHBDBG(p, "CAPP: snooping disabled\n");
+	
+	PHBDBG(p, "CAPP: turning off examining cResps...\n");
+	
+	/* clear bit 3 of APC master PB control reg to turn off "examing cresps"... */
+	xscom_read(p->chip_id, APC_MASTER_PB_CTRL + offset, &reg);
+	reg &= ~PPC_BIT(3);
+	xscom_write(p->chip_id, APC_MASTER_PB_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: examining cResps disabled\n");
+	
+	PHBDBG(p, "CAPP: clear APC Master CAPI Control...\n");
+	/* clear bits 1-3 of APC Master CAPI Control??????? reg to disable PHBs... not sure what this does exactly? */
+	xscom_read(p->chip_id, APC_MASTER_CAPI_CTRL + offset, &reg);
+	reg &= ~PPC_BITMASK(1, 3);
+	xscom_write(p->chip_id, APC_MASTER_CAPI_CTRL + offset, reg);
+	PHBDBG(p, "CAPP: APC Master CAPI control cleared...\n");
+	
+	PHBDBG(p, "CAPP: Clearing other random bits and pieces\n");
+	
+	// PE Bus AIB Mode Bits
+	xscom_read(p->chip_id, p->pci_xscom + 0xf, &reg);
+	reg &= ~PPC_BITMASK(40, 41);
+	reg |= PPC_BITMASK(7, 8);
+	reg &= ~PPC_BITMASK(40, 42);
+	xscom_write(p->chip_id, p->pci_xscom + 0xf, reg);
+	
+	// PCI hwconf0
+	xscom_read(p->chip_id, p->pe_xscom + 0x18, &reg);
+	reg &= ~PPC_BIT(14);
+	reg |= PPC_BIT(15);
+	xscom_write(p->chip_id, p->pe_xscom + 0x18, reg);
+	
+	// PCI hwconf1
+	xscom_read(p->chip_id, p->pe_xscom + 0x19, &reg);
+	reg |= PPC_BITMASK(17,18);
+	xscom_write(p->chip_id, p->pe_xscom + 0x19, reg);
+	
+	// AIB TX Command Credit
+	xscom_read(p->chip_id, p->pci_xscom + 0xd, &reg);
+	reg |= PPC_BIT(42);
+	reg &= ~PPC_BITMASK(43, 47);
+	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
+	
+	// AIB TX Credit Init Timer
+	xscom_write(p->chip_id, p->pci_xscom + 0xc, 0xff00000000000000ull);
+	
+	// PBCQ Mode Control Register
+	xscom_read(p->chip_id, p->pe_xscom + 0xb, &reg);
+	reg &= ~PPC_BIT(25);
+	xscom_write(p->chip_id, p->pe_xscom + 0xb, reg);
+	
+	// TODO: Some more SCOMs in phb3_init_capp_regs() and phb3_init_capp_errors()...
+	
+	PHBDBG(p, "CAPP: Clearing CAPP Enable...\n");
+	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
+	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
+
+	chip->capp_phb3_attached_mask &= ~(1 << p->index);
+	
+	unlock(&capi_lock);
+	
+	return OPAL_SUCCESS;
 }
 
 static int64_t phb3_set_capi_mode(struct phb *phb, uint64_t mode,
