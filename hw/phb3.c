@@ -2479,6 +2479,16 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		p->flags &= ~PHB3_CAPP_RECOVERY;
 		phb3_init_hw(p, false);
 
+	/* clear err rpt reg*/
+	xscom_write(p->chip_id, CAPP_ERR_RPT_CLR + PHB3_CAPP_REG_OFFSET(p), 0);
+	/* clear capp fir */
+	xscom_write(p->chip_id, CAPP_FIR + PHB3_CAPP_REG_OFFSET(p), 0);
+
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + PHB3_CAPP_REG_OFFSET(p), &val);
+	PHBDBG(p, "CAPP: Clearing CAPP Error Status and Control. Current value: %llx\n", val);
+	val &= ~(PPC_BIT(0) | PPC_BIT(1));
+	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + PHB3_CAPP_REG_OFFSET(p), val);
+		
 		pci_slot_set_state(slot, PHB3_SLOT_CRESET_FRESET);
 		return pci_slot_set_sm_timeout(slot, msecs_to_tb(100));
 	case PHB3_SLOT_CRESET_FRESET:
@@ -3531,7 +3541,32 @@ static int64_t disable_capi_mode(struct phb3 *p)
 
 	chip->capp_phb3_attached_mask &= ~(1 << p->index);
 
-	do_capp_recovery_scoms(p);
+	//do_capp_recovery_scoms(p);
+
+
+
+
+
+
+
+
+
+	
+	/* clear err rpt reg*/
+	//xscom_write(p->chip_id, CAPP_ERR_RPT_CLR + offset, 0);
+	/* clear capp fir */
+	//xscom_write(p->chip_id, CAPP_FIR + offset, 0);
+
+	//xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	//PHBDBG(p, "CAPP: Clearing CAPP Error Status and Control. Current value: %llx\n", reg);
+	//reg &= ~(PPC_BIT(0) | PPC_BIT(1));
+	//xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
+
+
+
+
+	
+	
 	unlock(&capi_lock);
 	
 	return OPAL_SUCCESS;
@@ -4079,13 +4114,16 @@ static void phb3_init_hw(struct phb3 *p, bool first_init)
 		PHBERR(p, "Failed to init PEC, PHB appears broken\n");
 		goto failed;
 	}
+	PHBDBG(p, "PEC init fixups done, lifting reset\n");
 
 	/* Lift reset */
 	xscom_read(p->chip_id, p->spci_xscom + 1, &val);/* HW275117 */
 	xscom_write(p->chip_id, p->pci_xscom + 0xa, 0);
+	PHBDBG(p, "Reset lifted, waiting\n");
 
 	/* XXX FIXME, turn that into a state machine or a worker thread */
 	time_wait_ms(100);
+	PHBDBG(p, "100ms wait complete\n");
 
 	/* Grab version and fit it in an int */
 	val = phb3_read_reg_asb(p, PHB_VERSION);
