@@ -3498,7 +3498,7 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	
 	PHBDBG(p, "CAPP: Clearing other random bits and pieces\n");
 	
-	// PE Bus AIB Mode Bits
+	/* PE Bus AIB Mode Bits */
 	xscom_read(p->chip_id, p->pci_xscom + 0xf, &reg);
 	reg &= ~PPC_BITMASK(40, 41);
 	reg |= PPC_BITMASK(7, 8);
@@ -3516,16 +3516,16 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	reg |= PPC_BITMASK(17,18);
 	xscom_write(p->chip_id, p->pe_xscom + 0x19, reg);
 	
-	// AIB TX Command Credit
+	/* AIB TX Command Credit */
 	xscom_read(p->chip_id, p->pci_xscom + 0xd, &reg);
 	reg |= PPC_BIT(42);
 	reg &= ~PPC_BITMASK(43, 47);
 	xscom_write(p->chip_id, p->pci_xscom + 0xd, reg);
 	
-	// AIB TX Credit Init Timer
+	/* AIB TX Credit Init Timer */
 	xscom_write(p->chip_id, p->pci_xscom + 0xc, 0xff00000000000000ull);
 	
-	// PBCQ Mode Control Register
+	/* PBCQ Mode Control Register */
 	xscom_read(p->chip_id, p->pe_xscom + 0xb, &reg);
 	reg &= ~PPC_BIT(25);
 	xscom_write(p->chip_id, p->pe_xscom + 0xb, reg);
