@@ -3561,7 +3561,7 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	xscom_write(p->chip_id, CAPP_EPOCH_TIMER_CTRL + offset, 0);
 
 	/* PE Secure CAPP Enable Register - we're all done! Disable CAPP mode! */
-	xscom_write(p->chip_id, p->spci_xscom + 0x3, 0x0000000000000000);
+	xscom_write(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), 0x0000000000000000);
 
 	/* Trigger CAPP recovery scoms after reinit */
 	p->flags |= PHB3_CAPP_DISABLING;
