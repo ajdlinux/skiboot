@@ -3282,21 +3282,29 @@ static void phb3_init_capp_regs(struct phb3 *p, bool dma_mode)
 	PHBINF(p, "CAPP: port attached\n");
 
 	/* tlb and mmio */
+	DUMP_SCOM(p, TRANSPORT_CONTROL + offset);
 	xscom_write(p->chip_id, TRANSPORT_CONTROL + offset, 0x4028000104000000);
 
+	DUMP_SCOM(p, CANNED_PRESP_MAP0 + offset);
 	xscom_write(p->chip_id, CANNED_PRESP_MAP0 + offset, 0);
+	DUMP_SCOM(p, CANNED_PRESP_MAP1 + offset);
 	xscom_write(p->chip_id, CANNED_PRESP_MAP1 + offset, 0xFFFFFFFF00000000);
+	DUMP_SCOM(p, CANNED_PRESP_MAP2 + offset);
 	xscom_write(p->chip_id, CANNED_PRESP_MAP2 + offset, 0);
 
 	/* error recovery */
 	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, 0);
 
+	DUMP_SCOM(p, FLUSH_SUE_STATE_MAP + offset);
 	xscom_write(p->chip_id, FLUSH_SUE_STATE_MAP + offset,
 		    0x1DC20B6600000000);
+	DUMP_SCOM(p, CAPP_EPOCH_TIMER_CTRL + offset);
 	xscom_write(p->chip_id, CAPP_EPOCH_TIMER_CTRL + offset,
 		    0xC0000000FFF0FFE0);
+	DUMP_SCOM(p, FLUSH_UOP_CONFIG1 + offset);
 	xscom_write(p->chip_id,  FLUSH_UOP_CONFIG1 + offset,
 		    0xB188280728000000);
+	DUMP_SCOM(p, FLUSH_UOP_CONFIG2 + offset);
 	xscom_write(p->chip_id, FLUSH_UOP_CONFIG2 + offset, 0xB188400F00000000);
 
 	reg = 0xA1F0000000000000;
