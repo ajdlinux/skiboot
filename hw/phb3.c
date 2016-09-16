@@ -2437,9 +2437,11 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		 */
 		if (!phb3_fenced(p))
 			xscom_write(p->chip_id, p->pe_xscom + 0x2, 0x000000f000000000ull);
-		/* Disable CAPI mode */
-		disable_capi_mode(p);
-		
+
+		/* Now that we're guaranteed to be fenced, disable CAPI mode */
+		if (!(p->flags & PHB3_CAPP_RECOVERY))
+			disable_capi_mode(p);
+
 		/* Clear errors in NFIR and raise ETU reset */
 		xscom_read(p->chip_id, p->pe_xscom + 0x0, &p->nfir_cache);
 
@@ -2479,16 +2481,11 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		p->flags &= ~PHB3_CAPP_RECOVERY;
 		phb3_init_hw(p, false);
 
-	/* clear err rpt reg*/
-	xscom_write(p->chip_id, CAPP_ERR_RPT_CLR + PHB3_CAPP_REG_OFFSET(p), 0);
-	/* clear capp fir */
-	xscom_write(p->chip_id, CAPP_FIR + PHB3_CAPP_REG_OFFSET(p), 0);
+		if (p->flags & PHB3_CAPP_DISABLING) {
+			do_capp_recovery_scoms(p);
+			p->flags &= ~PHB3_CAPP_DISABLING;
+		}
 
-	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + PHB3_CAPP_REG_OFFSET(p), &val);
-	PHBDBG(p, "CAPP: Clearing CAPP Error Status and Control. Current value: %llx\n", val);
-	val &= ~(PPC_BIT(0) | PPC_BIT(1));
-	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + PHB3_CAPP_REG_OFFSET(p), val);
-		
 		pci_slot_set_state(slot, PHB3_SLOT_CRESET_FRESET);
 		return pci_slot_set_sm_timeout(slot, msecs_to_tb(100));
 	case PHB3_SLOT_CRESET_FRESET:
@@ -3540,33 +3537,7 @@ static int64_t disable_capi_mode(struct phb3 *p)
 	PHBDBG(p, "CAPP: CAPP Enable cleared\n");
 
 	chip->capp_phb3_attached_mask &= ~(1 << p->index);
-
-	//do_capp_recovery_scoms(p);
-
-
-
-
-
-
-
-
-
-	
-	/* clear err rpt reg*/
-	//xscom_write(p->chip_id, CAPP_ERR_RPT_CLR + offset, 0);
-	/* clear capp fir */
-	//xscom_write(p->chip_id, CAPP_FIR + offset, 0);
-
-	//xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
-	//PHBDBG(p, "CAPP: Clearing CAPP Error Status and Control. Current value: %llx\n", reg);
-	//reg &= ~(PPC_BIT(0) | PPC_BIT(1));
-	//xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
-
-
-
-
-	
-	
+	p->flags |= PHB3_CAPP_DISABLING;
 	unlock(&capi_lock);
 	
 	return OPAL_SUCCESS;
