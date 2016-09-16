@@ -3218,6 +3218,14 @@ static int64_t phb3_get_diag_data(struct phb *phb,
 	return OPAL_SUCCESS;
 }
 
+static void dump_scom(struct phb3 *p, uint64_t scom, int line_num) {
+       uint64_t reg;
+       xscom_read(p->chip_id, scom, &reg);
+       PHBDBG(p, "Line: %d, SCOM %llx = %llx\n", line_num, scom, reg);
+}
+
+#define DUMP_SCOM(p, scom) dump_scom(p, scom, __LINE__)
+
 static void phb3_init_capp_regs(struct phb3 *p, bool dma_mode)
 {
 	uint64_t reg;
