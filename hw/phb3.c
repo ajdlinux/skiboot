@@ -4537,6 +4537,11 @@ static bool phb3_calculate_windows(struct phb3 *p)
 	return true;
 }
 
+static bool phb3_host_sync_reset(struct phb3 *p)
+{
+	// todo this might need to be moved to the pci_slot instead of the phb3...
+}
+
 static void phb3_create(struct dt_node *np)
 {
 	const struct dt_property *prop;
@@ -4669,6 +4674,8 @@ static void phb3_create(struct dt_node *np)
 
 	/* Load capp microcode into capp unit */
 	capp_load_ucode(p);
+
+	opal_add_host_sync_notifier(phb3_host_sync_reset, p);
 
 	/* Platform additional setup */
 	if (platform.pci_setup_phb)
