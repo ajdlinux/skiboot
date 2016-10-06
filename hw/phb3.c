@@ -4537,9 +4537,28 @@ static bool phb3_calculate_windows(struct phb3 *p)
 	return true;
 }
 
-static bool phb3_host_sync_reset(struct phb3 *p)
+static bool phb3_host_sync_reset(void *data)
 {
-	// todo this might need to be moved to the pci_slot instead of the phb3...
+	struct phb3 *p = (struct phb3 *)data;
+	struct pci_slot *slot = p->phb.slot;
+	struct proc_chip *chip = get_chip(p->chip_id);
+	int64_t rc;
+
+	switch (slot->state) {
+	case PHB3_SLOT_NORMAL:
+		lock(&capi_lock);
+		rc = (chip->capp_phb3_attached_mask & (1 << p->index)) ?
+			OPAL_PHB_CAPI_MODE_CAPI :
+			OPAL_PHB_CAPI_MODE_PCIE;
+		unlock(&capi_lock);
+		if (rc == OPAL_PHB_CAPI_MODE_PCIE)
+			return true;
+		phb3_creset(slot);
+		return false;
+	default:
+		slot->ops.poll(slot);
+		return false;
+	}
 }
 
 static void phb3_create(struct dt_node *np)
