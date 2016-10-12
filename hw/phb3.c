@@ -4546,17 +4546,24 @@ static bool phb3_host_sync_reset(void *data)
 
 	switch (slot->state) {
 	case PHB3_SLOT_NORMAL:
+		PHBINF(p, "HOSTSYNCRESET: State normal\n");
 		lock(&capi_lock);
 		rc = (chip->capp_phb3_attached_mask & (1 << p->index)) ?
 			OPAL_PHB_CAPI_MODE_CAPI :
 			OPAL_PHB_CAPI_MODE_PCIE;
 		unlock(&capi_lock);
-		if (rc == OPAL_PHB_CAPI_MODE_PCIE)
+		if (rc == OPAL_PHB_CAPI_MODE_PCIE) {
+			PHBINF(p, "HOSTSYNCRESET: PCIE mode detected, aborting\n");
 			return true;
+		}
+		PHBINF(p, "HOSTSYNCRESET: starting CRESET!\n");
 		phb3_creset(slot);
+		PHBINF(p, "HOSTSYNCRESET: CRESET triggered\n");
 		return false;
 	default:
-		slot->ops.poll(slot);
+		PHBINF(p, "HOSTSYNCRESET: polling\n");
+		rc = slot->ops.poll(slot);
+		PHBINF(p, "HOSTSYNCRESET: poll completed rc=%lld\n", rc);
 		return false;
 	}
 }
