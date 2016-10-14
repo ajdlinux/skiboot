@@ -4561,10 +4561,15 @@ static bool phb3_host_sync_reset(void *data)
 		PHBINF(p, "HOSTSYNCRESET: CRESET triggered\n");
 		return false;
 	default:
-		PHBINF(p, "HOSTSYNCRESET: polling\n");
+		//PHBINF(p, "HOSTSYNCRESET: polling\n");
 		rc = slot->ops.poll(slot);
-		PHBINF(p, "HOSTSYNCRESET: poll completed rc=%lld\n", rc);
-		return false;
+		//PHBINF(p, "HOSTSYNCRESET: poll completed rc=%lld\n", rc);
+		if (rc)
+			return false;
+		else {
+			PHBINF(p, "HOSTSYNCRESET: poll returned 0 - time to stop!\n");
+			return true;
+		}
 	}
 }
 
