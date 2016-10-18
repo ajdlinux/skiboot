@@ -25,6 +25,7 @@
 #include <chip.h>
 #include <npu-regs.h>
 #include <npu.h>
+#include <capp.h>
 
 /*
  * HMER register layout:
@@ -296,27 +297,6 @@ static int handle_capp_recoverable(int chip_id, int capp_index)
 	return 0;
 }
 
-static int decode_one_malfunction(int flat_chip_id, struct OpalHMIEvent *hmi_evt)
-{
-	int capp_index;
-	struct proc_chip *chip = get_chip(flat_chip_id);
-	int capp_num = CHIP_IS_NAPLES(chip) ? 2 : 1;
-
-	hmi_evt->severity = OpalHMI_SEV_FATAL;
-	hmi_evt->type = OpalHMI_ERROR_MALFUNC_ALERT;
-
-	for (capp_index = 0; capp_index < capp_num; capp_index++)
-		if (is_capp_recoverable(flat_chip_id, capp_index))
-			if (handle_capp_recoverable(flat_chip_id, capp_index)) {
-				hmi_evt->severity = OpalHMI_SEV_NO_ERROR;
-				hmi_evt->type = OpalHMI_ERROR_CAPP_RECOVERY;
-				return 1;
-			}
-
-	/* TODO check other FIRs */
-	return 0;
-}
-
 static bool decode_core_fir(struct cpu_thread *cpu,
 				struct OpalHMIEvent *hmi_evt)
 {
@@ -399,6 +379,102 @@ static void find_core_checkstop_reason(struct OpalHMIEvent *hmi_evt,
 			*event_generated = 1;
 		}
 	}
+}
+
+static void find_capp_checkstop_reason(int flat_chip_id,
+				       struct OpalHMIEvent *hmi_evt,
+				       int *event_generated)
+{
+	int capp_index;
+	struct proc_chip *chip = get_chip(flat_chip_id);
+	int capp_num = CHIP_IS_NAPLES(chip) ? 2 : 1;
+	bool recoverable = false;
+	uint32_t reg_offset;
+	uint64_t capp_fir;
+	uint64_t capp_fir_mask;
+	uint64_t capp_fir_action0;
+	uint64_t capp_fir_action1;
+
+	hmi_evt->severity = OpalHMI_SEV_FATAL;
+	hmi_evt->type = OpalHMI_ERROR_MALFUNC_ALERT;
+
+	for (capp_index = 0; capp_index < capp_num; capp_index++) {
+		reg_offset = capp_index ? CAPP1_REG_OFFSET : 0x0;
+
+		if (xscom_read(flat_chip_id,
+			       CAPP_FIR + reg_offset, &capp_fir) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_MASK + reg_offset, &capp_fir_mask) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_ACTION0 + reg_offset, &capp_fir_action0) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_ACTION1 + reg_offset, &capp_fir_action1)) {
+			prerror("CAPP: Couldn't read CAPP FIR registers by XSCOM!\n");
+			return;
+		}
+
+		prlog(PR_DEBUG, "HMI: CAPP: FIR 0x%016llx mask 0x%016llx\n",
+		      capp_fir, capp_fir_mask);
+		prlog(PR_DEBUG, "HMI: CAPP: ACTION0 0x%016llx, ACTION1 0x%016llx\n",
+		      capp_fir_action0, capp_fir_action1);
+
+		if (is_capp_recoverable(flat_chip_id, capp_index)) {
+			if (handle_capp_recoverable(flat_chip_id, capp_index)) {
+				hmi_evt->severity = OpalHMI_SEV_NO_ERROR;
+				hmi_evt->type = OpalHMI_ERROR_CAPP_RECOVERY;
+				recoverable = true;
+				break;
+			}
+		}
+	}
+
+	if (recoverable) {
+		queue_hmi_event(hmi_evt, 1);
+		*event_generated = 1;
+	}
+
+	/*
+	struct phb *phb;
+	struct phb3 *p = NULL;
+	struct phb3 *_p = NULL;
+	uint32_t offset;
+	uint64_t capp_fir;
+	uint64_t capp_fir_mask;
+	uint64_t capp_fir_action0;
+	uint64_t capp_fir_action1;
+
+	for_each_phb(phb) {
+		_p = phb_to_phb3(phb); // TODO: check CPU and make sure it's a phb3
+		if (_p->chip_id == flat_chip_id) {
+			p = _p;
+			prlog(PR_DEBUG, "HMI: CAPP: found PHB for chip %d\n", flat_chip_id);
+			break;
+		}
+	}
+
+	if (!p) *//* not ours! *//*
+		return;
+
+	offset = PHB3_CAPP_REG_OFFSET(p);
+	if (xscom_read(flat_chip_id,
+		       CAPP_FIR + offset, &capp_fir) ||
+	    xscom_read(flat_chip_id,
+		       CAPP_FIR_MASK + offset, &capp_fir_mask) ||
+	    xscom_read(flat_chip_id,
+		       CAPP_FIR_ACTION0 + offset, &capp_fir_action0) ||
+	    xscom_read(flat_chip_id,
+		       CAPP_FIR_ACTION1 + offset, &capp_fir_action1)) {
+		prerror("HMI: CAPP: Couldn't read CAPP FIR registers by XSCOM!\n");
+		return;
+	}
+	
+	prlog(PR_DEBUG, "HMI: CAPP: FIR 0x%016llx mask 0x%016llx\n",
+	      capp_fir, capp_fir_mask);
+	prlog(PR_DEBUG, "HMI: CAPP: ACTION0 0x%016llx, ACTION1 0x%016llx\n",
+	      capp_fir_action0, capp_fir_action1);
+
+	// TODO: Actually do something with the event
+	*/
 }
 
 static void find_nx_checkstop_reason(int flat_chip_id,
@@ -544,12 +620,8 @@ static void decode_malfunction(struct OpalHMIEvent *hmi_evt)
 
 	for (i = 0; i < 64; i++)
 		if (malf_alert & PPC_BIT(i)) {
-			recover = decode_one_malfunction(i, hmi_evt);
 			xscom_write(this_cpu()->chip_id, 0x02020011, ~PPC_BIT(i));
-			if (recover) {
-				queue_hmi_event(hmi_evt, recover);
-				event_generated = 1;
-			}
+			find_capp_checkstop_reason(i, hmi_evt, &event_generated);
 			find_nx_checkstop_reason(i, hmi_evt, &event_generated);
 			find_npu_checkstop_reason(i, hmi_evt, &event_generated);
 		}
