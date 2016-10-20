@@ -4557,6 +4557,7 @@ static bool phb3_host_sync_reset(void *data)
 			return true;
 		}
 		PHBINF(p, "HOSTSYNCRESET: starting CRESET!\n");
+		p->flags &= ~PHB3_CAPP_RECOVERY;
 		phb3_creset(slot);
 		PHBINF(p, "HOSTSYNCRESET: CRESET triggered\n");
 		return false;
