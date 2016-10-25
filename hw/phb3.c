@@ -2547,6 +2547,7 @@ static int64_t phb3_creset(struct pci_slot *slot)
 	}
 
 error:
+	pci_slot_set_state(slot, PHB3_SLOT_NORMAL);
 	p->state = PHB3_STATE_UNINITIALIZED;
 	return OPAL_HARDWARE;
 }
