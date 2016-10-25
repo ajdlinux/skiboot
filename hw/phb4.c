@@ -57,7 +57,7 @@
 /* Enable this to disable error interrupts for debug purposes */
 #define DISABLE_ERR_INTS
 
-static void phb4_init_hw(struct phb4 *p, bool first_init);
+static int64_t phb4_init_hw(struct phb4 *p, bool first_init);
 
 #define PHBDBG(p, fmt, a...)	prlog(PR_DEBUG, "PHB%d: " fmt, \
 				      (p)->phb.opal_id, ## a)
@@ -1964,6 +1964,7 @@ static int64_t phb4_freset(struct pci_slot *slot)
 static int64_t phb4_creset(struct pci_slot *slot)
 {
 	struct phb4 *p = phb_to_phb4(slot->phb);
+	int64_t rc;
 
 	switch (slot->state) {
 	case PHB4_SLOT_NORMAL:
@@ -1987,7 +1988,10 @@ static int64_t phb4_creset(struct pci_slot *slot)
 	case PHB4_SLOT_CRESET_REINIT:
 		p->flags &= ~PHB4_AIB_FENCED;
 		p->flags &= ~PHB4_CAPP_RECOVERY;
-		phb4_init_hw(p, false);
+		rc = phb4_init_hw(p, false);
+		if (rc)
+			goto error;
+
 		pci_slot_set_state(slot, PHB4_SLOT_CRESET_FRESET);
 		return pci_slot_set_sm_timeout(slot, msecs_to_tb(100));
 	case PHB4_SLOT_CRESET_FRESET:
@@ -1998,8 +2002,9 @@ static int64_t phb4_creset(struct pci_slot *slot)
 		       slot->state);
 	}
 
-	/* Mark the PHB as dead and expect it to be removed */
-	p->state = PHB4_STATE_BROKEN;
+error:
+	pci_slot_set_state(slot, PHB4_SLOT_NORMAL);
+	p->state = PHB4_STATE_UNINITIALIZED;
 	return OPAL_HARDWARE;
 }
 
@@ -2628,7 +2633,7 @@ static void phb4_init_errors(struct phb4 *p)
 }
 
 
-static void phb4_init_hw(struct phb4 *p, bool first_init)
+static int64_t phb4_init_hw(struct phb4 *p, bool first_init)
 {
 	uint64_t val, creset;
 
@@ -2756,11 +2761,12 @@ static void phb4_init_hw(struct phb4 *p, bool first_init)
 
 	PHBDBG(p, "Initialization complete\n");
 
-	return;
+	return OPAL_SUCCESS;
 
  failed:
 	PHBERR(p, "Initialization failed\n");
-	p->state = PHB4_STATE_BROKEN;
+	p->state = PHB4_STATE_UNINITIALIZED;
+	return OPAL_HARDWARE;
 }
 
 /* FIXME: Use scoms rather than MMIO incase we are fenced */
@@ -3032,6 +3038,7 @@ static void phb4_create(struct dt_node *np)
 	struct dt_node *iplp;
 	char *path;
 	uint32_t irq_base;
+	int64_t rc;
 
 	assert(p);
 
@@ -3171,7 +3178,9 @@ static void phb4_create(struct dt_node *np)
 	phb4_init_ioda_cache(p);
 
 	/* Get the HW up and running */
-	phb4_init_hw(p, true);
+	rc = phb4_init_hw(p, true);
+	if (rc)
+		goto failed;
 
 	/* Register all interrupt sources with XIVE */
 	xive_register_source(p->base_msi, p->num_irqs - 8, 16, p->int_mmio, 0,
