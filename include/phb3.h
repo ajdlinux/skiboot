@@ -196,9 +196,6 @@ enum phb3_state {
 	/* During PHB HW inits */
 	PHB3_STATE_INITIALIZING,
 
-	/* Set if the PHB is for some reason unusable */
-	PHB3_STATE_BROKEN,
-
 	/* PHB fenced */
 	PHB3_STATE_FENCED,
 
