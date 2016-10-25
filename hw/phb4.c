@@ -3044,11 +3044,6 @@ static void phb4_create(struct dt_node *np)
 	/* By default link is assumed down */
 	p->has_link = false;
 
-	/* We register the PHB before we initialize it so we
-	 * get a useful OPAL ID for it
-	 */
-	pci_register_phb(&p->phb, p->chip_id * 6 + p->index); //6 PHBs per chip?
-
 	/* Create slot structure */
 	slot = phb4_slot_create(&p->phb);
 	if (!slot)
@@ -3146,6 +3141,7 @@ static void phb4_create(struct dt_node *np)
 	if (platform.pci_setup_phb)
 		platform.pci_setup_phb(&p->phb, p->index);
 
+	pci_register_phb(&p->phb, p->chip_id * 6 + p->index); //6 PHBs per chip?
 	dt_add_property_string(np, "status", "okay");
 
 	return;
