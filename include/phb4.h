@@ -157,9 +157,6 @@ enum phb4_state {
 	/* During PHB HW inits */
 	PHB4_STATE_INITIALIZING,
 
-	/* Set if the PHB is for some reason unusable */
-	PHB4_STATE_BROKEN,
-
 	/* PHB fenced */
 	PHB4_STATE_FENCED,
 
