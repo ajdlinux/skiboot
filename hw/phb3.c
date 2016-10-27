@@ -127,6 +127,10 @@ static int64_t phb3_pcicfg_check(struct phb3 *p, uint32_t bdfn,
 	if ((bdfn >> 8) == 0 && (bdfn & 0xff))
 		return OPAL_HARDWARE;
 
+	/* Check PHB state */
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
+
 	/* Fetch the PE# from cache */
 	*pe = p->rte_cache[bdfn];
 
@@ -1692,7 +1696,7 @@ static int64_t phb3_msi_set_xive(struct irq_source *is, uint32_t isn,
 	index = p8_irq_to_phb(isn);
 	ive_num = PHB3_IRQ_NUM(isn);
 
-	if (!p->tbl_rtt)
+	if (p->state == PHB3_STATE_BROKEN || !p->tbl_rtt)
 		return OPAL_HARDWARE;
 	if (chip != p->chip_id ||
 	    index != p->index ||
@@ -1798,6 +1802,9 @@ static int64_t phb3_lsi_set_xive(struct irq_source *is, uint32_t isn,
 	index = p8_irq_to_phb(isn);
 	irq = PHB3_IRQ_NUM(isn);
 
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
+
 	if (chip != p->chip_id	||
 	    index != p->index	||
 	    irq < PHB3_LSI_IRQ_MIN ||
@@ -1834,6 +1841,10 @@ static void phb3_err_interrupt(struct irq_source *is, uint32_t isn)
 	/* Update pending event */
 	opal_update_pending_evt(OPAL_EVENT_PCI_ERROR,
 				OPAL_EVENT_PCI_ERROR);
+
+	/* If the PHB is broken, go away */
+	if (p->state == PHB3_STATE_BROKEN)
+		return;
 
 	/*
 	 * Mark the PHB has pending error so that the OS
@@ -2059,6 +2070,9 @@ static int64_t phb3_get_presence_state(struct pci_slot *slot, uint8_t *val)
 {
 	struct phb3 *p = phb_to_phb3(slot->phb);
 	uint64_t hp_override;
+
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
 
 	/*
 	 * On P8, the slot status isn't wired up properly, we have
@@ -2546,6 +2560,7 @@ static int64_t phb3_creset(struct pci_slot *slot)
 		       slot->state);
 	}
 
+	/* Mark the PHB as dead and expect it to be removed */
 error:
 	pci_slot_set_state(slot, PHB3_SLOT_NORMAL);
 	p->state = PHB3_STATE_UNINITIALIZED;
@@ -2604,6 +2619,15 @@ static int64_t phb3_eeh_freeze_status(struct phb *phb, uint64_t pe_number,
 	*freeze_state = OPAL_EEH_STOPPED_NOT_FROZEN;
 	*pci_error_type = OPAL_EEH_NO_ERROR;
 
+	/* Check dead */
+	if (p->state == PHB3_STATE_BROKEN) {
+		*freeze_state = OPAL_EEH_STOPPED_MMIO_DMA_FREEZE;
+		*pci_error_type = OPAL_EEH_PHB_ERROR;
+		if (severity)
+			*severity = OPAL_EEH_SEV_PHB_DEAD;
+		return OPAL_HARDWARE;
+	}
+
 	/* Check fence and CAPP recovery */
 	if (phb3_fenced(p) || (p->flags & PHB3_CAPP_RECOVERY)) {
 		*freeze_state = OPAL_EEH_STOPPED_MMIO_DMA_FREEZE;
@@ -2651,6 +2675,9 @@ static int64_t phb3_eeh_freeze_clear(struct phb *phb, uint64_t pe_number,
 	uint64_t err, peev[4];
 	int32_t i;
 	bool frozen_pe = false;
+
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
 
 	/* Summary. If nothing, move to clearing the PESTs which can
 	 * contain a freeze state from a previous error or simply set
@@ -2706,6 +2733,9 @@ static int64_t phb3_eeh_freeze_set(struct phb *phb, uint64_t pe_number,
         struct phb3 *p = phb_to_phb3(phb);
         uint64_t data;
 
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
+
 	if (pe_number >= PHB3_MAX_PE_NUM)
 		return OPAL_PARAMETER;
 
@@ -2740,6 +2770,13 @@ static int64_t phb3_eeh_next_error(struct phb *phb,
 	uint64_t fir, peev[4];
 	uint32_t cfg32;
 	int32_t i, j;
+
+	/* If the PHB is broken, we needn't go forward */
+	if (p->state == PHB3_STATE_BROKEN) {
+		*pci_error_type = OPAL_EEH_PHB_ERROR;
+		*severity = OPAL_EEH_SEV_PHB_DEAD;
+		return OPAL_SUCCESS;
+	}
 
 	if ((p->flags & PHB3_CAPP_RECOVERY)) {
 		*pci_error_type = OPAL_EEH_PHB_ERROR;
@@ -3220,6 +3257,8 @@ static int64_t phb3_get_diag_data(struct phb *phb,
 
 	if (diag_buffer_len < sizeof(struct OpalIoPhb3ErrorData))
 		return OPAL_PARAMETER;
+	if (p->state == PHB3_STATE_BROKEN)
+		return OPAL_HARDWARE;
 
 	/*
 	 * Dummy check for fence so that phb3_read_phb_status knows
@@ -4191,7 +4230,7 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 
  failed:
 	PHBERR(p, "Initialization failed\n");
-	p->state = PHB3_STATE_UNINITIALIZED;
+	p->state = PHB3_STATE_BROKEN;
 	return OPAL_HARDWARE;
 }
 
