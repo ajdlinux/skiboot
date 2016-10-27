@@ -3987,6 +3987,8 @@ static int64_t phb3_fixup_pec_inits(struct phb3 *p)
 	return 0;
 }
 
+#define GOT_HERE PHBDBG(p, "line %d\n", __LINE__)
+
 static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 {
 	uint64_t val;
@@ -4073,21 +4075,21 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 	out_be64(p->regs + PHB_PCIE_UTL_ERRLOG4,	   0xffffffffffffffff);
 	out_be64(p->regs + PHB_PCIE_DLP_ERRLOG1,	   0xffffffffffffffff);
 	out_be64(p->regs + PHB_PCIE_DLP_ERRLOG2,	   0xffffffffffffffff);
-
+	GOT_HERE;
 	/* Init_43 - Wait for UTL core to come out of reset */
 	if (!phb3_wait_dlp_reset(p))
 		goto failed;
-
+	GOT_HERE;
 	/* Init_44 - Clear port status */
 	out_be64(p->regs + UTL_PCIE_PORT_STATUS,	   0xffffffffffffffff);
-
+	GOT_HERE;
 	/* Init_45..76: Init root complex config space */
 	if (!phb3_init_rc_cfg(p))
 		goto failed;
-
+	GOT_HERE;
 	/* Init_77..86 : Init UTL */
 	phb3_init_utl(p);
-
+	GOT_HERE;
 	/*
 	 * Init_87: PHB Control register. Various PHB settings
 	 *          Enable IVC for Murano DD2.0 or later one
@@ -4108,17 +4110,17 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 				"ibm,32-bit-bypass-supported", NULL, 0);
 	}
 	out_be64(p->regs + PHB_CONTROL, val);
-
+	GOT_HERE;
 	/* Init_88..128  : Setup error registers */
 	phb3_init_errors(p);
-
+	GOT_HERE;
 	/* Init_129: Read error summary */
 	val = in_be64(p->regs + PHB_ETU_ERR_SUMMARY);
 	if (val) {
 		PHBERR(p, "Errors detected during PHB init: 0x%16llx\n", val);
 		goto failed;
 	}
-
+	GOT_HERE;
 	/* NOTE: At this point the spec waits for the link to come up. We
 	 * don't bother as we are doing a PERST soon.
 	 */
@@ -4136,7 +4138,7 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 			    PCI_CFG_CMD_BUS_MASTER_EN |
 			    PCI_CFG_CMD_PERR_RESP |
 			    PCI_CFG_CMD_SERR_EN);
-
+	GOT_HERE;
 	/* Clear errors */
 	phb3_pcicfg_write16(&p->phb, 0, PCI_CFG_STAT,
 			    PCI_CFG_STAT_SENT_TABORT |
@@ -4144,7 +4146,7 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 			    PCI_CFG_STAT_RECV_MABORT |
 			    PCI_CFG_STAT_SENT_SERR |
 			    PCI_CFG_STAT_RECV_PERR);
-
+	GOT_HERE;
 	/* Init_136 - Re-enable error interrupts */
 
 	/* TBD: Should we mask any of these for PERST ? */
@@ -4153,7 +4155,7 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 	out_be64(p->regs + PHB_INA_ERR_IRQ_ENABLE, 0xc000a3a901826020);
 	out_be64(p->regs + PHB_INB_ERR_IRQ_ENABLE, 0x0000600000800070);
 	out_be64(p->regs + PHB_LEM_ERROR_MASK,	   0x42498e367f502eae);
-
+	GOT_HERE;
 	/*
 	 * Init_141 - Enable DMA address speculation
 	 *
@@ -4167,19 +4169,19 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 		out_be64(p->regs + PHB_TCE_SPEC_CTL,		0xf000000000000000);
 	else
 		out_be64(p->regs + PHB_TCE_SPEC_CTL,		0x0ul);
-
+	GOT_HERE;
 	/* Errata#20131017: avoid TCE queue overflow */
 	if (p->rev == PHB3_REV_MURANO_DD20)
 		phb3_write_reg_asb(p, PHB_TCE_WATERMARK,	0x0003000000030302);
-
+	GOT_HERE;
 	/* Init_142 - PHB3 - Timeout Control Register 1
 	 * SW283991: Increase timeouts
 	 */
 	out_be64(p->regs + PHB_TIMEOUT_CTRL1,			0x1715152016200000);
-
+	GOT_HERE;
 	/* Init_143 - PHB3 - Timeout Control Register 2 */
 	out_be64(p->regs + PHB_TIMEOUT_CTRL2,			0x2320d71600000000);
-
+	GOT_HERE;
 	/* Mark the PHB as functional which enables all the various sequences */
 	p->state = PHB3_STATE_FUNCTIONAL;
 
