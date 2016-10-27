@@ -4440,7 +4440,7 @@ static void phb3_create(struct dt_node *np)
 		opal_id = p->chip_id * 8 + p->index;
 	else
 		opal_id = p->chip_id * 4 + p->index;
-
+	pci_register_phb(&p->phb, opal_id);
 	slot = phb3_slot_create(&p->phb);
 	if (!slot)
 		PHBERR(p, "Cannot create PHB slot\n");
@@ -4509,8 +4509,6 @@ static void phb3_create(struct dt_node *np)
 	/* Platform additional setup */
 	if (platform.pci_setup_phb)
 		platform.pci_setup_phb(&p->phb, p->index);
-
-	pci_register_phb(&p->phb, opal_id);
 }
 
 static void phb3_probe_pbcq(struct dt_node *pbcq)
