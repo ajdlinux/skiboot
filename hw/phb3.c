@@ -4430,9 +4430,10 @@ static void phb3_create(struct dt_node *np)
 	/* By default link is assumed down */
 	p->has_link = false;
 
-	/* 
-	 * We use a different numbering here between Naples and
-	 * Venice/Murano in order to leave room for the NPU on Naples.
+	/* We register the PHB before we initialize it so we
+	 * get a useful OPAL ID for it. We use a different numbering here
+	 * between Naples and Venice/Murano in order to leave room for the
+	 * NPU on Naples.
 	 */
 	chip = next_chip(NULL); /* Just need any chip */
 	if (chip && chip->type == PROC_CHIP_P8_NAPLES)
