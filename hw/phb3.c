@@ -4230,7 +4230,6 @@ static int64_t phb3_init_hw(struct phb3 *p, bool first_init)
 
  failed:
 	PHBERR(p, "Initialization failed\n");
-	p->state = PHB3_STATE_BROKEN;
 	return OPAL_HARDWARE;
 }
 
@@ -4539,8 +4538,10 @@ static void phb3_create(struct dt_node *np)
 
 	/* Get the HW up and running */
 	rc = phb3_init_hw(p, true);
-	if (rc)
+	if (rc) {
+		p->state = PHB3_STATE_BROKEN;
 		return;
+	}
 
 	/* Load capp microcode into capp unit */
 	capp_load_ucode(p);
