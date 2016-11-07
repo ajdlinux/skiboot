@@ -2193,7 +2193,7 @@ static int64_t phb3_poll_link(struct pci_slot *slot)
 				return rc;
 
 			pci_slot_set_state(slot, PHB3_SLOT_NORMAL);
-			return OPAL_SUCCESS;
+			return OPAL_HARDWARE;
 		}
 		return pci_slot_set_sm_timeout(slot, msecs_to_tb(100));
 	default:
