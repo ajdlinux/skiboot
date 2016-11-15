@@ -3547,6 +3547,11 @@ static int64_t disable_capi_mode(struct phb3 *p)
 
 	/* CAPP Error Status and Control Register - disable TLBI */
 	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	if (!(reg & PPC_BIT(0))) {
+		PHBERR(p, "CAPP: WARNING: CAPP Recovery not initiated, report bug\n");
+		return OPAL_HARDWARE;
+	}
+		
 	PHBINF(p, "CAPP: CAPP_ERR_STATUS_CTRL: 0x%016llx\n", reg);
 //	reg |= PPC_BIT(0);
 //	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
