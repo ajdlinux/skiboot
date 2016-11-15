@@ -3546,7 +3546,8 @@ static int64_t disable_capi_mode(struct phb3 *p)
 		PHBINF(p, "CAPP: WARNING: may not be attached!\n");
 
 	/* CAPP Error Status and Control Register - disable TLBI */
-//	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	xscom_read(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, &reg);
+	PHBINF(p, "CAPP: CAPP_ERR_STATUS_CTRL: 0x%016llx\n", reg);
 //	reg |= PPC_BIT(0);
 //	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 
