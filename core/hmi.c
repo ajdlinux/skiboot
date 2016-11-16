@@ -259,12 +259,14 @@ static int is_capp_recoverable(int chip_id, int capp_index)
 
 #define CHIP_IS_NAPLES(chip) ((chip)->type == PROC_CHIP_P8_NAPLES)
 
-static int handle_capp_recoverable(int chip_id, int capp_index)
+// TODO TODO TODO: FIX THIS
+#include <phb3.h>
+
+static struct phb *capp_to_phb(int chip_id, int capp_index)
 {
 	struct dt_node *np;
 	u64 phb_id;
 	u32 dt_chip_id;
-	struct phb *phb;
 	u32 phb_index;
 	struct proc_chip *chip = get_chip(chip_id);
 
@@ -287,14 +289,21 @@ static int handle_capp_recoverable(int chip_id, int capp_index)
 		if ((chip_id == dt_chip_id) &&
 		    CAPP_PHB3_ATTACHED(chip, phb_index) &&
 		    (!CHIP_IS_NAPLES(chip) || phb_index == capp_index)) {
-			phb = pci_get_phb(phb_id);
-			phb_lock(phb);
-			phb->ops->set_capp_recovery(phb);
-			phb_unlock(phb);
-			return 1;
+			return pci_get_phb(phb_id);
 		}
 	}
-	return 0;
+	return NULL;
+}
+
+static int handle_capp_recoverable(struct phb *phb)
+{
+	if (!phb) // TODO do we need this case
+		return 0;
+	
+	phb_lock(phb);
+	phb->ops->set_capp_recovery(phb);
+	phb_unlock(phb);
+	return 1;
 }
 
 static bool decode_core_fir(struct cpu_thread *cpu,
@@ -394,6 +403,7 @@ static void find_capp_checkstop_reason(int flat_chip_id,
 	uint64_t capp_fir_mask;
 	uint64_t capp_fir_action0;
 	uint64_t capp_fir_action1;
+	struct phb *phb;
 
 	hmi_evt->severity = OpalHMI_SEV_FATAL;
 	hmi_evt->type = OpalHMI_ERROR_MALFUNC_ALERT;
@@ -418,8 +428,18 @@ static void find_capp_checkstop_reason(int flat_chip_id,
 		prlog(PR_DEBUG, "HMI: CAPP: ACTION0 0x%016llx, ACTION1 0x%016llx\n",
 		      capp_fir_action0, capp_fir_action1);
 
+		//////////////
+		phb = capp_to_phb(flat_chip_id, capp_index);
+		if (phb && (phb_to_phb3(phb)->flags & PHB3_CAPP_DISABLING) &&
+		    (capp_fir & PPC_BIT(31))) {
+			// Ignoring!
+			prerror("CAPP: IGNORING HMI!\n");
+			continue;
+		}
+		//////////////
+
 		if (is_capp_recoverable(flat_chip_id, capp_index)) {
-			if (handle_capp_recoverable(flat_chip_id, capp_index)) {
+			if (handle_capp_recoverable(phb)) {
 				hmi_evt->severity = OpalHMI_SEV_NO_ERROR;
 				hmi_evt->type = OpalHMI_ERROR_CAPP_RECOVERY;
 				recoverable = true;
@@ -626,7 +646,7 @@ static void decode_malfunction(struct OpalHMIEvent *hmi_evt)
 			find_npu_checkstop_reason(i, hmi_evt, &event_generated);
 		}
 
-	if (recover != -1) {
+	if (recover != -1) { ////////// TODO: Fix this, what does recover do again...
 		find_core_checkstop_reason(hmi_evt, &event_generated);
 
 		/*

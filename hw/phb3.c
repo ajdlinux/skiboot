@@ -2488,6 +2488,16 @@ static int64_t phb3_creset(struct pci_slot *slot)
 	case PHB3_SLOT_CRESET_START:
 		PHBDBG(p, "CRESET: Starts\n");
 
+
+		/* CAPP: mask "PHB Link Down" FIR bit ACTUALLY LET'S NOT DO THAT
+
+note to future andrew:
+
+so masking this will probably mask the machine check that we need to force recovery
+not just the HMIs we want to get rid of 
+
+*/
+		
 		/* do steps 3-5 of capp recovery procedure */
 		if (p->flags & PHB3_CAPP_RECOVERY)
 			do_capp_recovery_scoms(p);
@@ -3534,6 +3544,10 @@ static int64_t disable_capi_mode(struct phb3 *p)
 
 	lock(&capi_lock);
 
+	phb_lock(&p->phb); // TODO: Needed?
+	p->flags |= PHB3_CAPP_DISABLING;
+	phb_unlock(&p->phb);
+
 	xscom_read(p->chip_id, PE_CAPP_EN + PE_REG_OFFSET(p), &reg);
 	if (!(reg & PPC_BIT(0))) {
 	        /* Not in CAPI mode, no action required */
@@ -3556,6 +3570,7 @@ static int64_t disable_capi_mode(struct phb3 *p)
 //	reg |= PPC_BIT(0);
 //	xscom_write(p->chip_id, CAPP_ERR_STATUS_CTRL + offset, reg);
 
+	
 	/* Snoop CAPI Configuration Register - disable snooping */
 	xscom_write(p->chip_id, SNOOP_CAPI_CONFIG + offset,
 		    0x0000000000000000);
