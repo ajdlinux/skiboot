@@ -301,17 +301,43 @@ static int decode_one_malfunction(int flat_chip_id, struct OpalHMIEvent *hmi_evt
 	int capp_index;
 	struct proc_chip *chip = get_chip(flat_chip_id);
 	int capp_num = CHIP_IS_NAPLES(chip) ? 2 : 1;
+	uint32_t reg_offset;
+	uint64_t capp_fir;
+	uint64_t capp_fir_mask;
+	uint64_t capp_fir_action0;
+	uint64_t capp_fir_action1;
 
 	hmi_evt->severity = OpalHMI_SEV_FATAL;
 	hmi_evt->type = OpalHMI_ERROR_MALFUNC_ALERT;
 
-	for (capp_index = 0; capp_index < capp_num; capp_index++)
-		if (is_capp_recoverable(flat_chip_id, capp_index))
+	for (capp_index = 0; capp_index < capp_num; capp_index++) {
+		reg_offset = capp_index ? CAPP1_REG_OFFSET : 0x0;
+
+		if (xscom_read(flat_chip_id,
+			       CAPP_FIR + reg_offset, &capp_fir) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_MASK + reg_offset, &capp_fir_mask) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_ACTION0 + reg_offset, &capp_fir_action0) ||
+		    xscom_read(flat_chip_id,
+			       CAPP_FIR_ACTION1 + reg_offset, &capp_fir_action1)) {
+			prerror("CAPP: Couldn't read CAPP#%d FIR registers by XSCOM!\n",
+				capp_index);
+		}
+
+		prlog(PR_DEBUG, "HMI: CAPP#%d: FIR 0x%016llx mask 0x%016llx\n",
+		      capp_index, capp_fir, capp_fir_mask);
+		prlog(PR_DEBUG, "HMI: CAPP#%d: ACTION0 0x%016llx, ACTION1 0x%016llx\n",
+		      capp_index, capp_fir_action0, capp_fir_action1);
+
+		if (is_capp_recoverable(flat_chip_id, capp_index)) {
 			if (handle_capp_recoverable(flat_chip_id, capp_index)) {
 				hmi_evt->severity = OpalHMI_SEV_NO_ERROR;
 				hmi_evt->type = OpalHMI_ERROR_CAPP_RECOVERY;
 				return 1;
 			}
+		}
+	}
 
 	/* TODO check other FIRs */
 	return 0;
