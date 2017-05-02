@@ -163,4 +163,6 @@ void npu2_dev_procedure_reset(struct npu2_dev *dev);
 void npu2_set_link_flag(struct npu2_dev *ndev, uint8_t flag);
 void npu2_clear_link_flag(struct npu2_dev *ndev, uint8_t flag);
 extern int nv_zcal_nominal;
+bool is_p9dd1(void);
+
 #endif /* __NPU2_H */
