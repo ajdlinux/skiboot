@@ -18,7 +18,7 @@ endif
 #
 # Main debug switch
 #
-DEBUG ?= 0
+DEBUG ?= 1
 
 #
 # Optional location of embedded linux kernel file
