@@ -1099,58 +1099,45 @@ static const struct phb_ops npu_ops = {
 	.tce_kill		= npu2_tce_kill,
 };
 
-static void assign_mmio_bars(uint64_t gcid, uint32_t scom, uint64_t reg[2], uint64_t mm_win[2])
+static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
+			     uint64_t reg[2], uint64_t mm_win[2])
 {
-	uint64_t mem_start;
 	uint32_t i;
 	struct npu2_bar *bar;
 	struct npu2_bar npu2_bars[] = {
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0,   NPU2_PHY_BAR), .size = 0x1000000,
+		{ .type = NPU_PHY, .index = 0, /* On DD2, stack 0 is NPU_REGS, stack 2 is NPU_PHY */
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
 		  .flags = NPU2_BAR_FLAG_ENABLED },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0,   NPU2_PHY_BAR), .size =  0x200000,
+		{ .type = NPU_PHY, .index = 1, /* Index 0 on DD2 */
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
 		  .flags = NPU2_BAR_FLAG_ENABLED },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0,   NPU2_PHY_BAR), .size =  0x200000,
+		{ .type = NPU_REGS, .index = 0,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
 		  .flags = NPU2_BAR_FLAG_ENABLED },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0,  NPU2_NTL0_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0,  NPU2_NTL1_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0,  NPU2_NTL0_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0,  NPU2_NTL1_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0,  NPU2_NTL0_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0,  NPU2_NTL1_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_GENID_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_GENID_BAR), .size =   0x20000 },
-		{ .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_GENID_BAR), .size =   0x20000 },
+		{ .type = NPU_NTL, .index = 0,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_NTL0_BAR) },
+		{ .type = NPU_NTL, .index = 1,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_NTL1_BAR) },
+		{ .type = NPU_NTL, .index = 2,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_NTL0_BAR) },
+		{ .type = NPU_NTL, .index = 3,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_NTL1_BAR) },
+		{ .type = NPU_NTL, .index = 4,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_NTL0_BAR) },
+		{ .type = NPU_NTL, .index = 5,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_NTL1_BAR) },
+		{ .type = NPU_GENID, .index = 0,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_GENID_BAR) },
+		{ .type = NPU_GENID, .index = 1,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_GENID_BAR) },
+		{ .type = NPU_GENID, .index = 2,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_GENID_BAR) },
 	};
 
-	mem_start = 0x6030200000000;
-	mem_start |= gcid << PPC_BITLSHIFT(21);
-
-	/*
-	 * We're going to assign the BARs in reversed order according
-	 * to their sizes, just like the order we have in npu_bars[].
-	 * In that way, all BARs will be aligned perfectly without
-	 * wasting resources. Also, the Linux kernel won't change
-	 * anything though it attempts to reassign the BARs that
-	 * it can see, which are NTL and GENID BARs.
-	 *
-	 * GLOBAL MMIO (16MB)
-	 *        PHY0 (2MB)
-	 *        PHB1 (2MB)
-	 *        NTL0 (128KB)
-	 *        NTL1 (128KB)
-	 *        NTL2 (128KB)
-	 *        NTL3 (128KB)
-	 *        NTL4 (128KB)
-	 *        NTL5 (128KB)
-	 *      GENID0 (128KB)
-	 *      GENID1 (128KB)
-	 *      GENID2 (128KB)
-	 */
 	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
 		bar = &npu2_bars[i];
-		bar->base = mem_start;
-		mem_start += bar->size;
-		npu2_write_bar(NULL, bar, gcid, scom);
+		phys_map_get(proc_chip, bar->type, bar->index, &bar->base, &bar->size);
+		npu2_write_bar(NULL, bar, proc_chip->id, scom);
 	}
 
 	/* Global MMIO BAR */
@@ -1199,7 +1186,7 @@ static void npu2_probe_phb(struct dt_node *dn)
 	prlog(PR_INFO, "   SCOM Base:  %08x\n", scom);
 
 	/* Reassign the BARs */
-	assign_mmio_bars(gcid, scom, reg, mm_win);
+	assign_mmio_bars(proc_chip, scom, reg, mm_win);
 
 	if (reg[0] && reg[1])
 		prlog(PR_INFO, "   Global MMIO BAR:  %016llx (%lldMB)\n",
