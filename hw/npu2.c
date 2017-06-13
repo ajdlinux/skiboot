@@ -1150,7 +1150,7 @@ static void assign_mmio_bars(uint64_t gcid, uint32_t scom, uint64_t reg[2], uint
 		bar = &npu2_bars[i];
 		bar->base = mem_start;
 		mem_start += bar->size;
-		prlog(PR_INFO, "NPU2 BAR %d: Chip %lld   Base %016llx   Size %016llx\n", i, gcid, bar->base, bar->size);
+		prlog(PR_INFO, "NPU2 BAR %d: Chip %lld   Reg %016llx   Base %016llx   Size %016llx\n", i, gcid, bar->reg, bar->base, bar->size);
 		npu2_write_bar(NULL, bar, gcid, scom);
 	}
 
