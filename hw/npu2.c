@@ -1099,6 +1099,8 @@ static const struct phb_ops npu_ops = {
 	.tce_kill		= npu2_tce_kill,
 };
 
+extern void flush_console(void);
+
 static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 			     uint64_t reg[2], uint64_t mm_win[2])
 {
@@ -1134,9 +1136,21 @@ static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_GENID_BAR) },
 	};
 
+	prlog(PR_INFO, "NPU2 BAR BLAH BLAH BLAH\n");
+	flush_console();
+	time_wait_ms(100);
+	
 	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
 		bar = &npu2_bars[i];
 		phys_map_get(proc_chip, bar->type, bar->index, &bar->base, &bar->size);
+		prlog(PR_INFO, "NPU2 BAR: Chip %d   Reg %016llx   Type %d   Index %d   Base %016llx   Size %016llx\n", proc_chip->id, bar->reg, bar->type, bar->index, bar->base, bar->size);
+	}
+
+	flush_console();
+	time_wait_ms(100);
+
+	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
+		bar = &npu2_bars[i];
 		npu2_write_bar(NULL, bar, proc_chip->id, scom);
 	}
 
