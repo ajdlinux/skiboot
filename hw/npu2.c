@@ -35,6 +35,7 @@
 #include <bitutils.h>
 #include <chip.h>
 #include <phys-map.h>
+#include <console.h>
 
 /*
  * NPU2 BAR layout definition. We have 3 stacks and each of them
@@ -215,8 +216,13 @@ static void npu2_write_bar(struct npu2 *p,
 		reg = NPU2_REG_OFFSET(0, block, bar->reg);
 		if (p)
 			npu2_write(p, reg, val);
-		else
+		else {
+			prlog(PR_INFO, "NPU2 Write Bar: reg %016llx flags %08x base %016llx val %016llx\n", reg, bar->flags, bar->base, val);
+			flush_console();
+			flush_console();
+			flush_console();
 			npu2_scom_write(gcid, scom, reg, NPU2_MISC_DA_LEN_8B, val);
+		}
 	}
 }
 
@@ -1099,8 +1105,6 @@ static const struct phb_ops npu_ops = {
 	.tce_kill		= npu2_tce_kill,
 };
 
-extern void flush_console(void);
-
 static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 			     uint64_t reg[2], uint64_t mm_win[2])
 {
@@ -1137,8 +1141,8 @@ static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 	};
 
 	prlog(PR_INFO, "NPU2 BAR BLAH BLAH BLAH\n");
-	flush_console();
-	time_wait_ms(100);
+//	flush_console();
+//	time_wait_ms(100);
 	
 	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
 		bar = &npu2_bars[i];
@@ -1146,8 +1150,8 @@ static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 		prlog(PR_INFO, "NPU2 BAR: Chip %d   Reg %016llx   Type %d   Index %d   Base %016llx   Size %016llx\n", proc_chip->id, bar->reg, bar->type, bar->index, bar->base, bar->size);
 	}
 
-	flush_console();
-	time_wait_ms(100);
+//	flush_console();
+//	time_wait_ms(100);
 
 	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
 		bar = &npu2_bars[i];
