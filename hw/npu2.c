@@ -716,21 +716,23 @@ static void npu2_init_ioda_cache(struct npu2 *p)
 	memset(p->tve_cache, 0, sizeof(p->tve_cache));
 }
 
+#define BLAH prlog(PR_INFO, "NPU2: Reached line %d\n", __LINE__)
+
 static int64_t npu2_ioda_reset(struct phb *phb, bool purge)
 {
 	struct npu2 *p = phb_to_npu2(phb);
 	uint32_t i;
-
+	BLAH;
 	if (purge) {
 		NPU2DBG(p, "Purging all IODA tables...\n");
 		npu2_init_ioda_cache(p);
 	}
-
+	BLAH;
 	/* TVT */
 	npu2_ioda_sel(p, NPU2_ATS_IODA_TBL_TVT, 0, true);
 	for (i = 0; i < ARRAY_SIZE(p->tve_cache); i++)
 		out_be64(p->regs + NPU2_ATS_IODA_DATA, p->tve_cache[i]);
-
+	BLAH;
 	return OPAL_SUCCESS;
 }
 
@@ -739,18 +741,18 @@ static void npu2_hw_init(struct npu2 *p)
 	int i;
 	uint64_t val, size, addr, gpu_min_addr, gpu_max_addr, total_size;
 	struct proc_chip *chip = get_chip(p->chip_id);
-
+	BLAH;
 	npu2_ioda_reset(&p->phb, false);
-
+	BLAH;
 	/* Enable XTS retry mode */
 	val = npu2_read(p, NPU2_XTS_CFG);
 	npu2_write(p, NPU2_XTS_CFG, val | NPU2_XTS_CFG_MMIOSD | NPU2_XTS_CFG_TRY_ATR_RO);
-
+	BLAH;
 	/* Init memory cache directory (MCD) registers. */
 	phys_map_get(chip, GPU_MEM, NPU2_LINKS_PER_CHIP - 1, &gpu_min_addr, NULL);
 	phys_map_get(chip, GPU_MEM, 0, &gpu_max_addr, &size);
 	gpu_max_addr += size;
-
+	BLAH;
 	/* We assume GPU memory is contiguous from the first possible GPU to the
 	 * last and that the size is the same so best to check that. */
 	for (i = 0; i < NPU2_LINKS_PER_CHIP; i++) {
@@ -759,7 +761,7 @@ static void npu2_hw_init(struct npu2 *p)
 		assert((addr >= gpu_min_addr) && (addr + tmp <= gpu_max_addr));
 		assert(tmp == size);
 	}
-
+	BLAH;
 	/* We have two MCDs, so if neccessary we can split the region covered
 	 * across both if total_size is not a power of two. */
 	total_size = gpu_max_addr - gpu_min_addr;
@@ -780,6 +782,7 @@ static void npu2_hw_init(struct npu2 *p)
 		val = SETFIELD(PPC_BITMASK(33, 63), val, addr >> 25);
 		xscom_write(p->chip_id, MCD1_BANK0_CN3, val);
 	}
+	BLAH;
 }
 
 static int64_t npu2_map_pe_dma_window_real(struct phb *phb,
@@ -1111,14 +1114,14 @@ static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 	uint32_t i;
 	struct npu2_bar *bar;
 	struct npu2_bar npu2_bars[] = {
-		{ .type = NPU_PHY, .index = 0, /* On DD2, stack 0 is NPU_REGS, stack 2 is NPU_PHY */
+		{ .type = NPU_REGS, .index = 0, /* On DD2, stack 0 is NPU_REGS, stack 2 is NPU_PHY */
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
+		  .flags = NPU2_BAR_FLAG_ENABLED },
+		{ .type = NPU_PHY, .index = 0, /* Index 0 on DD2 */
 		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
 		  .flags = NPU2_BAR_FLAG_ENABLED },
-		{ .type = NPU_PHY, .index = 1, /* Index 0 on DD2 */
+		{ .type = NPU_PHY, .index = 1,
 		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
-		  .flags = NPU2_BAR_FLAG_ENABLED },
-		{ .type = NPU_REGS, .index = 0,
-		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
 		  .flags = NPU2_BAR_FLAG_ENABLED },
 		{ .type = NPU_NTL, .index = 0,
 		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_NTL0_BAR) },
