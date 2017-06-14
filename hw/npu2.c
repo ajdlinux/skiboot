@@ -1597,9 +1597,10 @@ static void npu2_create_phb(struct dt_node *dn)
 	list_head_init(&p->phb.devices);
 	list_head_init(&p->phb.virt_devices);
 
+	prlog(PR_INFO, "NPU2: PHB basic init, now populating devices\n");
 	npu2_populate_devices(p, dn);
 	npu2_add_phb_properties(p);
-
+	prlog(PR_INFO, "NPU2: properties added, now creating slot\n");
 	slot = npu2_slot_create(&p->phb);
 	if (!slot)
 	{
@@ -1610,11 +1611,14 @@ static void npu2_create_phb(struct dt_node *dn)
 		 */
 		prlog(PR_ERR, "NPU: Cannot create PHB slot\n");
 	}
+	prlog(PR_INFO, "NPU2: Slot created, registering\n");
 
 	pci_register_phb(&p->phb, OPAL_DYNAMIC_PHB_ID);
-
+	prlog(PR_INFO, "NPU2: Registered, initing IODA cache\n");
 	npu2_init_ioda_cache(p);
+	prlog(PR_INFO, "NPU2: IODA cache initialised\n");
 	npu2_hw_init(p);
+	prlog(PR_INFO, "NPU2: HW Init complete\n");
 }
 
 void probe_npu2(void)
