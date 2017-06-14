@@ -186,6 +186,46 @@ static void npu2_read_bar(struct npu2 *p, struct npu2_bar *bar)
 	bar->flags = SETFIELD(NPU2_BAR_FLAG_ENABLED, bar->flags, enabled);
 }
 
+static void npu2_read_bar_TMP(uint32_t gcid, uint64_t scom, struct npu2_bar *bar)
+{
+	uint64_t reg, val;
+	int enabled;
+
+	reg = NPU2_REG_OFFSET(0, NPU2_BLOCK_SM_0, bar->reg);
+	val = npu2_scom_read(gcid, scom, reg, NPU2_MISC_DA_LEN_8B);
+
+	switch (NPU2_REG(bar->reg)) {
+	case NPU2_PHY_BAR:
+		bar->base = GETFIELD(NPU2_PHY_BAR_ADDR, val) << 21;
+		enabled = GETFIELD(NPU2_PHY_BAR_ENABLE, val);
+
+		if (NPU2_REG_STACK(reg) == NPU2_STACK_STCK_2)
+			/* This is the global MMIO BAR */
+			bar->size = 0x1000000;
+		else
+			bar->size = 0x200000;
+		break;
+	case NPU2_NTL0_BAR:
+	case NPU2_NTL1_BAR:
+		bar->base = GETFIELD(NPU2_NTL_BAR_ADDR, val) << 17;
+		enabled = GETFIELD(NPU2_NTL_BAR_ENABLE, val);
+		bar->size = 0x20000;
+		break;
+	case NPU2_GENID_BAR:
+		bar->base = GETFIELD(NPU2_GENID_BAR_ADDR, val) << 17;
+		enabled = GETFIELD(NPU2_GENID_BAR_ENABLE, val);
+		bar->size = 0x20000;
+		break;
+	default:
+		bar->base = 0ul;
+		enabled = 0;
+		bar->size = 0;
+		break;
+	}
+
+	bar->flags = SETFIELD(NPU2_BAR_FLAG_ENABLED, bar->flags, enabled);
+}
+
 static void npu2_write_bar(struct npu2 *p,
 			   struct npu2_bar *bar,
 			   uint32_t gcid,
@@ -1149,8 +1189,10 @@ static void assign_mmio_bars(struct proc_chip *proc_chip, uint32_t scom,
 	
 	for (i = 0; i < ARRAY_SIZE(npu2_bars); i++) {
 		bar = &npu2_bars[i];
+		npu2_read_bar_TMP(proc_chip->id, scom, bar);
+		prlog(PR_INFO, "NPU2 BAR HOSTBOOT: Chip %d   Reg %016llx   Type %d   Index %d   Base %016llx   Size %016llx\n", proc_chip->id, bar->reg, bar->type, bar->index, bar->base, bar->size);	
 		phys_map_get(proc_chip, bar->type, bar->index, &bar->base, &bar->size);
-		prlog(PR_INFO, "NPU2 BAR: Chip %d   Reg %016llx   Type %d   Index %d   Base %016llx   Size %016llx\n", proc_chip->id, bar->reg, bar->type, bar->index, bar->base, bar->size);
+		prlog(PR_INFO, "NPU2 BAR: Chip %d   Reg %016llx   Type %d   Index %d   Base %016llx   Size %016llx\n", proc_chip->id, bar->reg, bar->type, bar->index, bar->base, bar->size);	
 	}
 
 //	flush_console();
