@@ -217,7 +217,7 @@ static void npu2_write_bar(struct npu2 *p,
 		if (p)
 			npu2_write(p, reg, val);
 		else {
-			prlog(PR_INFO, "NPU2 Write Bar: reg %016llx flags %08x base %016llx val %016llx\n", reg, bar->flags, bar->base, val);
+			prlog(PR_INFO, "NPU2 Write Bar: \"%d\",\"%016llx\",\"%08x\",\"%016llx\",\"%016llx\"\n", gcid, reg, bar->flags, bar->base, val);
 			flush_console();
 			flush_console();
 			flush_console();
