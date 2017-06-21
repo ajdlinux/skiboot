@@ -75,31 +75,38 @@ struct npu2_pcie_bar {
 	struct npu2_bar		npu2_bar;
 };
 
+enum npu2_dev_type {
+	NPU2_DEV_TYPE_NVLINK,
+	NPU2_DEV_TYPE_OPENCAPI,
+};
+
 struct npu2;
 struct npu2_dev {
+	enum npu2_dev_type	type;
 	uint32_t		index;
 	uint32_t                flags;
 	uint64_t                xscom;
 	uint64_t		pl_xscom_base;
 	void			*regs;
 	struct dt_node		*dt_node;
-	struct npu2_pcie_bar	bars[2];
+	struct npu2_pcie_bar	bars[2]; // TODO: OpenCAPI probably doesn't need the wrapper struct
 	struct npu2		*npu;
 
-	/* Device and function numbers are allocated based on GPU
-	 * association. Links to connected to the same GPU will be
-	 * exposed as different functions of the same bus/device. */
+	/* For NVLink, device and function numbers are allocated based
+	 * on GPU association. Links to connected to the same GPU will
+	 * be exposed as different functions of the same
+	 * bus/device. */
 	uint32_t		bdfn;
-	uint32_t		gpu_bdfn;
+	uint32_t		gpu_bdfn; /* NVLink only */
 
-	/* PCI virtual device and the associated GPU device */
+	/* PCI virtual device and the associated GPU device - NVLink only*/
 	struct pci_virt_device	*pvd;
 	struct phb		*phb;
 	struct pci_device	*pd;
 
 	uint8_t			link_flags;
 
-	/* Vendor specific capability */
+	/* Vendor specific capability - NVLink only */
 	uint32_t		vendor_cap;
 
 	/* Which PHY lanes this device is associated with */
@@ -112,7 +119,7 @@ struct npu2_dev {
 	unsigned long		procedure_tb;
 	uint32_t		procedure_status;
 
-	/* Used to associate the NPU device with GPU PCI devices */
+	/* Used to associate the NPU device with GPU PCI devices - NVLink only */
 	const char		*slot_label;
 };
 
@@ -126,6 +133,7 @@ struct npu2 {
 	uint64_t	mm_base;
 	uint64_t	mm_size;
 	uint32_t	base_lsi;
+	uint32_t	irq_base;
 	uint32_t	total_devices;
 	struct npu2_dev	*devices;
 
@@ -147,6 +155,7 @@ static inline struct npu2 *phb_to_npu2(struct phb *phb)
 	return container_of(phb, struct npu2, phb);
 }
 
+struct npu2_dev *npu2_bdf_to_dev(struct npu2 *p, uint32_t bdfn);
 void npu2_write_4b(struct npu2 *p, uint64_t reg, uint32_t val);
 uint32_t npu2_read_4b(struct npu2 *p, uint64_t reg);
 void npu2_write(struct npu2 *p, uint64_t reg, uint64_t val);
@@ -156,7 +165,27 @@ int64_t npu2_dev_procedure(void *dev, struct pci_cfg_reg_filter *pcrf,
 			   uint32_t offset, uint32_t len, uint32_t *data,
 			   bool write);
 void npu2_dev_procedure_reset(struct npu2_dev *dev);
+
 void npu2_set_link_flag(struct npu2_dev *ndev, uint8_t flag);
 void npu2_clear_link_flag(struct npu2_dev *ndev, uint8_t flag);
 extern int nv_zcal_nominal;
+void npu2_opencapi_phy_setup(struct npu2_dev *dev);
+void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev);
+
+// TODO: Move this somewhere more appropriate...
+bool is_p9dd1(void);
+
+int64_t npu2_set_pe(struct phb *phb,
+		    uint64_t pe_num,
+		    uint64_t bdfn,
+		    uint8_t bcompare,
+		    uint8_t dcompare,
+		    uint8_t fcompare,
+		    uint8_t action);
+int64_t npu2_freeze_status(struct phb *phb __unused,
+			   uint64_t pe_number __unused,
+			   uint8_t *freeze_state,
+			   uint16_t *pci_error_type __unused,
+			   uint16_t *severity __unused,
+			   uint64_t *phb_status __unused);
 #endif /* __NPU2_H */

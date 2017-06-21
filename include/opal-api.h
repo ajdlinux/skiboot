@@ -214,7 +214,10 @@
 #define OPAL_SET_POWER_SHIFT_RATIO		155
 #define OPAL_SENSOR_GROUP_CLEAR			156
 #define OPAL_PCI_SET_P2P			157
-#define OPAL_LAST				157
+#define OPAL_NPU_SPA_SETUP			158
+#define OPAL_NPU_SPA_CLEAR_CACHE		159
+#define OPAL_NPU_TL_SET				160
+#define OPAL_LAST				160
 
 /* Device tree flags */
 
