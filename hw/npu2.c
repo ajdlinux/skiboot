@@ -64,87 +64,6 @@
  * configure one particular BAR.
  */
 
-static bool is_p9dd1(void)
-{
-	struct proc_chip *chip = next_chip(NULL);
-
-	return chip &&
-	       (chip->type == PROC_CHIP_P9_NIMBUS ||
-		chip->type == PROC_CHIP_P9_CUMULUS) &&
-	       (chip->ec_level & 0xf0) == 0x10;
-}
-
-/*
- * We use the indirect method because it uses the same addresses as
- * the MMIO offsets (NPU RING)
- */
-static void npu2_scom_set_addr(uint64_t gcid, uint64_t scom_base,
-			       uint64_t addr, uint64_t size)
-{
-	uint64_t isa = is_p9dd1() ? NPU2_DD1_MISC_SCOM_IND_SCOM_ADDR :
-				    NPU2_MISC_SCOM_IND_SCOM_ADDR;
-
-	addr = SETFIELD(NPU2_MISC_DA_ADDR, 0ull, addr);
-	addr = SETFIELD(NPU2_MISC_DA_LEN, addr, size);
-	xscom_write(gcid, scom_base + isa, addr);
-}
-
-static void npu2_scom_write(uint64_t gcid, uint64_t scom_base,
-			    uint64_t reg, uint64_t size,
-			    uint64_t val)
-{
-	uint64_t isd = is_p9dd1() ? NPU2_DD1_MISC_SCOM_IND_SCOM_DATA :
-				    NPU2_MISC_SCOM_IND_SCOM_DATA;
-
-	npu2_scom_set_addr(gcid, scom_base, reg, size);
-	xscom_write(gcid, scom_base + isd, val);
-}
-
-static uint64_t npu2_scom_read(uint64_t gcid, uint64_t scom_base,
-			       uint64_t reg, uint64_t size)
-{
-	uint64_t val;
-	uint64_t isd = is_p9dd1() ? NPU2_DD1_MISC_SCOM_IND_SCOM_DATA :
-				    NPU2_MISC_SCOM_IND_SCOM_DATA;
-
-	npu2_scom_set_addr(gcid, scom_base, reg, size);
-	xscom_read(gcid, scom_base + isd, &val);
-
-	return val;
-}
-
-void npu2_write_4b(struct npu2 *p, uint64_t reg, uint32_t val)
-{
-	npu2_scom_write(p->chip_id, p->xscom_base, reg, NPU2_MISC_DA_LEN_4B,
-			(uint64_t)val << 32);
-}
-
-uint32_t npu2_read_4b(struct npu2 *p, uint64_t reg)
-{
-	return npu2_scom_read(p->chip_id, p->xscom_base, reg,
-			      NPU2_MISC_DA_LEN_4B) >> 32;
-}
-
-void npu2_write(struct npu2 *p, uint64_t reg, uint64_t val)
-{
-	npu2_scom_write(p->chip_id, p->xscom_base, reg, NPU2_MISC_DA_LEN_8B, val);
-}
-
-uint64_t npu2_read(struct npu2 *p, uint64_t reg)
-{
-	return npu2_scom_read(p->chip_id, p->xscom_base, reg, NPU2_MISC_DA_LEN_8B);
-}
-
-void npu2_write_mask(struct npu2 *p, uint64_t reg, uint64_t val, uint64_t mask)
-{
-	uint64_t new_val;
-
-	new_val = npu2_read(p, reg);
-	new_val &= ~mask;
-	new_val |= val & mask;
-	npu2_scom_write(p->chip_id, p->xscom_base, reg, NPU2_MISC_DA_LEN_8B, new_val);
-}
-
 /* Set a specific flag in the vendor config space */
 void npu2_set_link_flag(struct npu2_dev *ndev, uint8_t flag)
 {
@@ -167,22 +86,6 @@ static inline void npu2_ioda_sel(struct npu2 *p, uint32_t table,
 		 (autoinc ? NPU2_ATS_IODA_TBL_AUTOINC : 0ul)	|
 		 SETFIELD(NPU2_ATS_IODA_TBL_SELECT, 0ul, table)	|
 		 SETFIELD(NPU2_ATS_IODA_TBL_INDEX,  0ul, index));
-}
-
-static struct npu2_dev *npu2_bdf_to_dev(struct npu2 *p,
-					uint32_t bdfn)
-{
-	struct pci_virt_device *pvd;
-
-	/* All emulated devices are attached to root bus */
-	if (bdfn & ~0xff)
-		return NULL;
-
-	pvd = pci_virt_find_device(&p->phb, bdfn);
-	if (pvd)
-		return pvd->data;
-
-	return NULL;
 }
 
 static inline void npu2_get_bar(uint32_t gcid, struct npu2_bar *bar)
@@ -1017,17 +920,17 @@ static int64_t npu2_map_pe_dma_window(struct phb *phb,
 	return OPAL_SUCCESS;
 }
 
-static int64_t npu2_set_pe(struct phb *phb,
-			   uint64_t pe_num,
-			   uint64_t bdfn,
-			   uint8_t bcompare,
-			   uint8_t dcompare,
-			   uint8_t fcompare,
-			   uint8_t action)
+int64_t npu2_set_pe(struct phb *phb,
+		    uint64_t pe_num,
+		    uint64_t bdfn,
+		    uint8_t bcompare,
+		    uint8_t dcompare,
+		    uint8_t fcompare,
+		    uint8_t action)
 {
 	struct npu2 *p = phb_to_npu2(phb);
 	struct npu2_dev *dev;
-	uint64_t reg, val;
+	uint64_t reg, val, pe_bdfn;
 
 	/* Sanity check */
 	if (action != OPAL_MAP_PE && action != OPAL_UNMAP_PE)
@@ -1046,21 +949,31 @@ static int64_t npu2_set_pe(struct phb *phb,
 	if (!dev)
 		return OPAL_PARAMETER;
 
-	val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
-	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, dev->gpu_bdfn);
-
-	if (!NPU2DEV_BRICK(dev))
-		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
-				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK0_BDF2PE_MAP0);
+	if (dev->type == NPU2_DEV_TYPE_OPENCAPI)
+		pe_bdfn = dev->bdfn;
 	else
-		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
-				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK1_BDF2PE_MAP0);
+		pe_bdfn = dev->gpu_bdfn;
 
-	npu2_write(p, reg, val);
+	if (dev->type == NPU2_DEV_TYPE_NVLINK) {
+		val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
+		val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
+		val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, pe_bdfn);
+
+		if (!NPU2DEV_BRICK(dev))
+			reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
+					      NPU2_BLOCK_CTL,
+					      NPU2_CQ_BRICK0_BDF2PE_MAP0);
+		else
+			reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
+					      NPU2_BLOCK_CTL,
+					      NPU2_CQ_BRICK1_BDF2PE_MAP0);
+
+		npu2_write(p, reg, val);
+	}
+
 	val = NPU2_MISC_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, dev->gpu_bdfn);
+	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, pe_bdfn);
 	reg = NPU2_REG_OFFSET(NPU2_STACK_MISC, NPU2_BLOCK_MISC,
 			      NPU2_MISC_BRICK0_BDF2PE_MAP0 + (dev->index * 0x18));
 	p->bdf2pe_cache[dev->index] = val;
@@ -1121,12 +1034,12 @@ static struct pci_slot *npu2_slot_create(struct phb *phb)
 	return slot;
 }
 
-static int64_t npu2_freeze_status(struct phb *phb __unused,
-				  uint64_t pe_number __unused,
-				  uint8_t *freeze_state,
-				  uint16_t *pci_error_type __unused,
-				  uint16_t *severity __unused,
-				  uint64_t *phb_status __unused)
+int64_t npu2_freeze_status(struct phb *phb __unused,
+			   uint64_t pe_number __unused,
+			   uint8_t *freeze_state,
+			   uint16_t *pci_error_type __unused,
+			   uint16_t *severity __unused,
+			   uint64_t *phb_status __unused)
 {
 	/*
 	 * FIXME: When it's called by skiboot PCI config accessor,
@@ -1632,6 +1545,7 @@ static void npu2_populate_devices(struct npu2 *p,
 		struct npu2_bar *npu2_bar;
 
 		dev = &p->devices[index];
+		dev->type = NPU2_DEV_TYPE_NVLINK;
 		dev->npu = p;
 		dev->dt_node = link;
 		dev->index = dt_prop_get_u32(link, "ibm,npu-link-index");

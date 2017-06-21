@@ -1039,7 +1039,8 @@ void __noreturn __nomcount main_cpu_entry(const void *fdt)
 
 	/* Probe NPUs */
 	probe_npu();
-	probe_npu2();
+	// probe_npu2(); // TODO: Re-enable once we've figured out combined init
+	probe_npu2_opencapi();
 
 	/* Initialize PCI */
 	pci_init_slots();
