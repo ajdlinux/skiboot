@@ -1274,7 +1274,7 @@ static void npu2_probe_phb(struct dt_node *dn)
 {
 	struct proc_chip *proc_chip;
 	struct dt_node *np;
-	uint32_t gcid, scom, index, phb_index, links;
+	uint32_t gcid, scom, index, phb_index, links = 0;
 	uint64_t reg[2], mm_win[2];
 	char *path;
 
@@ -1285,6 +1285,26 @@ static void npu2_probe_phb(struct dt_node *dn)
 	assert(proc_chip);
 	if ((proc_chip->ec_level & 0xf0) > 0x20) {
 		prerror("NPU2: unsupported ec level on Chip 0x%x!\n", gcid);
+		return;
+	}
+
+	dt_for_each_compatible(dn, np, "ibm,npu-link") {
+		links++;
+	}
+
+	index = dt_prop_get_u32(dn, "ibm,npu-index");
+	phb_index = dt_prop_get_u32(dn, "ibm,phb-index");
+
+	prlog(PR_INFO, "NPU2: Chip %d Found NPU2#%d (%d links) at %s\n",
+	      gcid, index, links, path);
+	free(path);
+
+	/* Retrieve scom base address */
+	scom = dt_get_address(dn, 0, NULL);
+	prlog(PR_INFO, "   SCOM Base:  %08x\n", scom);
+
+	if (!links) {
+		prlog(PR_INFO, "   No NVLink links found\n");
 		return;
 	}
 
@@ -1323,17 +1343,6 @@ static void npu2_probe_phb(struct dt_node *dn)
 		xscom_write_mask(gcid, 0x5011510, PPC_BIT(0), PPC_BIT(0));
 		xscom_write_mask(gcid, 0x5011530, PPC_BIT(0), PPC_BIT(0));
 	}
-
-	index = dt_prop_get_u32(dn, "ibm,npu-index");
-	phb_index = dt_prop_get_u32(dn, "ibm,phb-index");
-	links = dt_prop_get_u32(dn, "ibm,npu-links");
-	prlog(PR_INFO, "NPU2: Chip %d Found NPU2#%d (%d links) at %s\n",
-	      gcid, index, links, path);
-	free(path);
-
-	/* Retrieve scom base address */
-	scom = dt_get_address(dn, 0, NULL);
-	prlog(PR_INFO, "   SCOM Base:  %08x\n", scom);
 
 	/* Reassign the BARs */
 	assign_mmio_bars(gcid, scom, reg, mm_win);
