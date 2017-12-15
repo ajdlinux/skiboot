@@ -1001,17 +1001,17 @@ static int64_t npu2_map_pe_dma_window(struct phb *phb,
 	return OPAL_SUCCESS;
 }
 
-static int64_t npu2_set_pe(struct phb *phb,
-			   uint64_t pe_num,
-			   uint64_t bdfn,
-			   uint8_t bcompare,
-			   uint8_t dcompare,
-			   uint8_t fcompare,
-			   uint8_t action)
+int64_t npu2_set_pe(struct phb *phb,
+		    uint64_t pe_num,
+		    uint64_t bdfn,
+		    uint8_t bcompare,
+		    uint8_t dcompare,
+		    uint8_t fcompare,
+		    uint8_t action)
 {
 	struct npu2 *p;
 	struct npu2_dev *dev;
-	uint64_t reg, val;
+	uint64_t reg, val, pe_bdfn;
 
 	/* Sanity check */
 	if (action != OPAL_MAP_PE && action != OPAL_UNMAP_PE)
@@ -1036,21 +1036,31 @@ static int64_t npu2_set_pe(struct phb *phb,
 	if (!dev)
 		return OPAL_PARAMETER;
 
-	val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
-	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, dev->nvlink.gpu_bdfn);
-
-	if (!NPU2DEV_BRICK(dev))
-		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
-				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK0_BDF2PE_MAP0);
+	if (dev->type == NPU2_DEV_TYPE_OPENCAPI)
+		pe_bdfn = dev->bdfn;
 	else
-		reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
-				      NPU2_BLOCK_CTL, NPU2_CQ_BRICK1_BDF2PE_MAP0);
+		pe_bdfn = dev->nvlink.gpu_bdfn;
 
-	npu2_write(p, reg, val);
+	if (dev->type == NPU2_DEV_TYPE_NVLINK) {
+		val = NPU2_CQ_BRICK_BDF2PE_MAP_ENABLE;
+		val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_PE, val, pe_num);
+		val = SETFIELD(NPU2_CQ_BRICK_BDF2PE_MAP_BDF, val, pe_bdfn);
+
+		if (!NPU2DEV_BRICK(dev))
+			reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
+					      NPU2_BLOCK_CTL,
+					      NPU2_CQ_BRICK0_BDF2PE_MAP0);
+		else
+			reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0 + dev->index/2,
+					      NPU2_BLOCK_CTL,
+					      NPU2_CQ_BRICK1_BDF2PE_MAP0);
+
+		npu2_write(p, reg, val);
+	}
+
 	val = NPU2_MISC_BRICK_BDF2PE_MAP_ENABLE;
 	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_PE, val, pe_num);
-	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, dev->nvlink.gpu_bdfn);
+	val = SETFIELD(NPU2_MISC_BRICK_BDF2PE_MAP_BDF, val, pe_bdfn);
 	reg = NPU2_REG_OFFSET(NPU2_STACK_MISC, NPU2_BLOCK_MISC,
 			      NPU2_MISC_BRICK0_BDF2PE_MAP0 + (dev->index * 0x18));
 	p->bdf2pe_cache[dev->index] = val;
@@ -1111,12 +1121,12 @@ static struct pci_slot *npu2_slot_create(struct phb *phb)
 	return slot;
 }
 
-static int64_t npu2_freeze_status(struct phb *phb __unused,
-				  uint64_t pe_number __unused,
-				  uint8_t *freeze_state,
-				  uint16_t *pci_error_type __unused,
-				  uint16_t *severity __unused,
-				  uint64_t *phb_status __unused)
+int64_t npu2_freeze_status(struct phb *phb __unused,
+			   uint64_t pe_number __unused,
+			   uint8_t *freeze_state,
+			   uint16_t *pci_error_type __unused,
+			   uint16_t *severity __unused,
+			   uint64_t *phb_status __unused)
 {
 	/*
 	 * FIXME: When it's called by skiboot PCI config accessor,
