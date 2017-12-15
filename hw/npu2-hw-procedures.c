@@ -60,6 +60,7 @@ struct npu2_phy_reg NPU2_PHY_TX_FIFO_INIT		= {0x105, 53, 1};
 struct npu2_phy_reg NPU2_PHY_TX_RXCAL			= {0x103, 57, 1};
 struct npu2_phy_reg NPU2_PHY_RX_INIT_DONE		= {0x0ca, 48, 1};
 struct npu2_phy_reg NPU2_PHY_RX_PR_EDGE_TRACK_CNTL	= {0x092, 48, 2};
+struct npu2_phy_reg NPU2_PHY_RX_PR_BUMP_SL_1UI		= {0x092, 57, 1};
 struct npu2_phy_reg NPU2_PHY_RX_PR_FW_OFF		= {0x08a, 56, 1};
 struct npu2_phy_reg NPU2_PHY_RX_PR_FW_INERTIA_AMT	= {0x08a, 57, 3};
 struct npu2_phy_reg NPU2_PHY_RX_CFG_LTE_MC		= {0x000, 60, 4};
@@ -68,6 +69,8 @@ struct npu2_phy_reg NPU2_PHY_RX_B_INTEG_COARSE_GAIN	= {0x026, 48, 4};
 struct npu2_phy_reg NPU2_PHY_RX_E_INTEG_COARSE_GAIN	= {0x030, 48, 4};
 
 /* These registers are per-PHY, not per lane */
+struct npu2_phy_reg NPU2_PHY_RX_SPEED_SELECT		= {0x262, 51, 2};
+struct npu2_phy_reg NPU2_PHY_RX_AC_COUPLED		= {0x262, 53, 1};
 struct npu2_phy_reg NPU2_PHY_TX_ZCAL_SWO_EN		= {0x3c9, 48, 1};
 struct npu2_phy_reg NPU2_PHY_TX_ZCAL_REQ		= {0x3c1, 49, 1};
 struct npu2_phy_reg NPU2_PHY_TX_ZCAL_DONE		= {0x3c1, 50, 1};
@@ -377,6 +380,11 @@ static uint32_t phy_reset_wait(struct npu2_dev *ndev)
 static uint32_t phy_reset_complete(struct npu2_dev *ndev)
 {
 	int lane;
+
+	if (ndev->type == NPU2_DEV_TYPE_OPENCAPI) {
+		phy_write(ndev, &NPU2_PHY_RX_AC_COUPLED, 1);
+		phy_write(ndev, &NPU2_PHY_RX_SPEED_SELECT, 1);
+	}
 
 	FOR_EACH_LANE(ndev, lane) {
 		phy_write_lane(ndev, &NPU2_PHY_RX_LANE_ANA_PDWN, lane, 0);
@@ -886,4 +894,73 @@ int64_t npu2_dev_procedure(void *dev, struct pci_cfg_reg_filter *pcrf,
 void npu2_dev_procedure_reset(struct npu2_dev *dev)
 {
 	npu2_clear_link_flag(dev, NPU2_DEV_DL_RESET);
+}
+
+static uint32_t run_procedure(struct npu2_dev *dev, uint16_t procedure_number)
+{
+	struct procedure *proc;
+	const char *name;
+	uint32_t result;
+
+	assert(procedure_number <= ARRAY_SIZE(npu_procedures));
+	proc = npu_procedures[procedure_number];
+	assert(proc);
+
+	name = proc->name;
+	NPU2DEVINF(dev, "Running procedure %s\n", name);
+	dev->procedure_status = PROCEDURE_INPROGRESS;
+	dev->procedure_number = procedure_number;
+	dev->procedure_step = 0;
+	dev->procedure_data = 0;
+	dev->procedure_tb = mftb();
+
+	result = get_procedure_status(dev);
+	while (!(result & PROCEDURE_COMPLETE)) {
+		time_wait_ms(1);
+		result = get_procedure_status(dev);
+	}
+	return result;
+}
+
+void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev)
+{
+	uint64_t reg;
+	uint64_t status_xscom;
+	int lane, bit = 7;
+
+	switch (dev->index) {
+	case 2:
+		status_xscom = OB0_ODL0_TRAINING_STATUS;
+		break;
+	case 3:
+		status_xscom = OB0_ODL1_TRAINING_STATUS;
+		break;
+	case 4:
+		status_xscom = OB3_ODL0_TRAINING_STATUS;
+		break;
+	case 5:
+		status_xscom = OB3_ODL1_TRAINING_STATUS;
+		break;
+	default:
+		assert(false);
+	}
+	xscom_read(dev->npu->chip_id, status_xscom, &reg);
+	reg = GETFIELD(OB_ODL_TRAINING_STATUS_STS_RX_PATTERN_B, reg);
+
+	FOR_EACH_LANE(dev, lane) {
+		if (reg & (1 << bit--))
+			continue;
+		prlog(PR_TRACE, "OCAPI: bumpui bumping lane %d\n", lane);
+		for (int i = 0; i < 4; i++) {
+			phy_write_lane(dev, &NPU2_PHY_RX_PR_BUMP_SL_1UI, lane, 1);
+			phy_write_lane(dev, &NPU2_PHY_RX_PR_BUMP_SL_1UI, lane, 0);
+		}
+	}
+}
+
+void npu2_opencapi_phy_setup(struct npu2_dev *dev)
+{
+	run_procedure(dev, 4); /* procedure_phy_reset */
+	run_procedure(dev, 5); /* procedure_phy_tx_zcal */
+	run_procedure(dev, 6); /* procedure_phy_rx_dccal */
 }
