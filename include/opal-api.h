@@ -215,7 +215,10 @@
 #define OPAL_SENSOR_GROUP_CLEAR			156
 #define OPAL_PCI_SET_P2P			157
 #define OPAL_QUIESCE				158
-#define OPAL_LAST				158
+#define OPAL_NPU_SPA_SETUP			159
+#define OPAL_NPU_SPA_CLEAR_CACHE		160
+#define OPAL_NPU_TL_SET				161
+#define OPAL_LAST				161
 
 #define QUIESCE_HOLD			1 /* Spin all calls at entry */
 #define QUIESCE_REJECT			2 /* Fail all calls with OPAL_BUSY */
