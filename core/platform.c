@@ -110,6 +110,61 @@ static int64_t opal_cec_reboot2(uint32_t reboot_type, char *diag)
 }
 opal_call(OPAL_CEC_REBOOT2, opal_cec_reboot2, 2);
 
+
+#define NPU_BASE 0x5011000
+#define NPU_SIZE 0x2c
+#define NPU_INDIRECT0	0x8000000009010c3f /* OB0, we ignore OB3 for now */
+
+/* OpenCAPI only */
+static void create_link(struct dt_node *npu, int group, int index)
+{
+	struct dt_node *link;
+	uint32_t lane_mask;
+	char namebuf[32];
+
+	snprintf(namebuf, sizeof(namebuf), "link@%x", index);
+	link = dt_new(npu, namebuf);
+
+	dt_add_property_string(link, "compatible", "ibm,npu-link-opencapi");
+	dt_add_property_cells(link, "ibm,npu-link-index", index);
+
+	switch (index) {
+	case 2:
+		lane_mask = 0x00078f;
+		break;
+	case 3:
+		lane_mask = 0xf1e000;
+		break;
+	default:
+		assert(0);
+	}
+
+	dt_add_property_u64s(link, "ibm,npu-phy", NPU_INDIRECT0);
+	dt_add_property_cells(link, "ibm,npu-lane-mask", lane_mask);
+	dt_add_property_cells(link, "ibm,npu-group-id", group);
+}
+
+static void generic_create_npu(void)
+{
+	struct dt_node *xscom, *npu;
+	int npu_index = 0;
+	int phb_index = 7;
+	char namebuf[32];
+	prlog(PR_DEBUG, "OCAPI: Adding NPU device nodes\n");
+	dt_for_each_compatible(dt_root, xscom, "ibm,xscom") {
+		snprintf(namebuf, sizeof(namebuf), "npu@%x", NPU_BASE);
+		npu = dt_new(xscom, namebuf);
+		dt_add_property_cells(npu, "reg", NPU_BASE, NPU_SIZE);
+		dt_add_property_strings(npu, "compatible", "ibm,power9-npu");
+		dt_add_property_cells(npu, "ibm,npu-index", npu_index++);
+		dt_add_property_cells(npu, "ibm,phb-index", phb_index++);
+		dt_add_property_cells(npu, "ibm,npu-links", 2);
+		create_link(npu, 1, 2);
+		create_link(npu, 2, 3);
+		break;
+	}
+}
+
 static bool generic_platform_probe(void)
 {
 	if (dt_find_by_path(dt_root, "bmc")) {
@@ -123,6 +178,8 @@ static bool generic_platform_probe(void)
 	} else {
 		uart_init();
 	}
+
+	generic_create_npu();
 
 	return true;
 }
