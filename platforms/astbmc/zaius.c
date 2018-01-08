@@ -85,7 +85,6 @@ static void zaius_create_npu(void)
 		dt_add_property_cells(npu, "ibm,npu-links", 2);
 		create_link(npu, 1, 2);
 		create_link(npu, 2, 3);
-		break;
 	}
 }
 
