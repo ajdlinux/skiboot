@@ -215,4 +215,5 @@ int64_t npu2_freeze_status(struct phb *phb __unused,
 			   uint16_t *pci_error_type __unused,
 			   uint16_t *severity __unused,
 			   uint64_t *phb_status __unused);
+void npu2_opencapi_phy_prbs31(struct npu2_dev *dev);
 #endif /* __NPU2_H */

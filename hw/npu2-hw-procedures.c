@@ -102,6 +102,8 @@ struct npu2_phy_reg NPU2_PHY_RX_IREF_PDWN		= {0x230, 54, 1};
 struct npu2_phy_reg NPU2_PHY_TX_CLKDIST_PDWN		= {0x305, 48, 3};
 struct npu2_phy_reg NPU2_PHY_RX_CTL_DATASM_CLKDIST_PDWN = {0x2e0, 60, 1};
 
+struct npu2_phy_reg NPU2_PHY_TX_DRV_DATA_PATTERN_GCRMSG = {0x309, 50, 4};
+
 #define NPU2_PHY_REG(scom_base, reg, lane)					\
 	SETFIELD(PPC_BITMASK(27, 31), ((reg)->offset << 42) | scom_base, lane)
 
@@ -950,4 +952,9 @@ void npu2_opencapi_phy_setup(struct npu2_dev *dev)
 	run_procedure(dev, 4); /* procedure_phy_reset */
 	run_procedure(dev, 5); /* procedure_phy_tx_zcal */
 	run_procedure(dev, 6); /* procedure_phy_rx_dccal */
+}
+
+void npu2_opencapi_phy_prbs31(struct npu2_dev *dev)
+{
+	phy_write(dev, &NPU2_PHY_TX_DRV_DATA_PATTERN_GCRMSG, 0xD);
 }

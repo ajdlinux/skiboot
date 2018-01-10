@@ -105,28 +105,6 @@ static inline uint64_t index_to_block(uint64_t index) {
 	}
 }
 
-static uint64_t get_odl_status(uint32_t gcid, uint64_t index) {
-	uint64_t reg, status_xscom;
-	switch (index) {
-	case 2:
-		status_xscom = OB0_ODL0_STATUS;
-		break;
-	case 3:
-		status_xscom = OB0_ODL1_STATUS;
-		break;
-	case 4:
-		status_xscom = OB3_ODL0_STATUS;
-		break;
-	case 5:
-		status_xscom = OB3_ODL1_STATUS;
-		break;
-	default:
-		assert(false);
-	}
-	xscom_read(gcid, status_xscom, &reg);
-	return reg;
-}
-
 /* Procedure 13.1.3.1 - select OCAPI vs NVLink for bricks 2-3/4-5 */
 
 static void set_transport_mux_controls(uint32_t gcid, uint32_t scom_base,
@@ -749,201 +727,6 @@ static void setup_afu_config_bars(uint32_t gcid, uint32_t scom_base,
 	dev->bars[1].npu2_bar.size = size;
 }
 
-static void otl_enabletx(uint32_t gcid, uint32_t scom_base, uint64_t index)
-{
-	uint64_t stack = index_to_stack(index);
-	uint64_t block = index_to_block(index);
-	uint64_t reg;
-
-	/* OTL Config 2 Register */
-	/* Transmit Enable */
-	prlog(PR_DEBUG, "OCAPI: %s: Enabling TX\n", __func__);
-	reg = 0;
-	reg |= NPU2_OTL_CONFIG2_TX_SEND_EN;
-	npu2_scom_write(gcid, scom_base, NPU2_OTL_CONFIG2(stack, block),
-			NPU2_MISC_DA_LEN_8B, reg);
-
-	reg = npu2_scom_read(gcid, scom_base, NPU2_OTL_VC_CREDITS(stack, block),
-			     NPU2_MISC_DA_LEN_8B);
-	prlog(PR_DEBUG, "OCAPI: credit counter: %llx\n", reg);
-	/* TODO: Abort if credits are zero */
-}
-
-static void reset_ocapi_device(uint32_t gcid, int index)
-{
-	struct dt_node *dn;
-	char port_name[17];
-	uint32_t opal_id = 0;
-	uint8_t data[3];
-	int rc;
-	int i;
-
-	assert(platform.ocapi);
-
-	if (platform.ocapi->i2c_voltage_18) {
-		xscom_write_mask(gcid, PERV_ROOT_CTRL2,
-				 PERV_ROOT_CTRL2_TP_IO_VSB_OP0A_V1P8_EN,
-				 PERV_ROOT_CTRL2_TP_IO_VSB_OP0A_V1P8_EN);
-	}
-
-	switch (index) {
-	case 2:
-	case 4:
-		memcpy(data, platform.ocapi->i2c_odl0_data, sizeof(data));
-		break;
-	case 3:
-	case 5:
-		memcpy(data, platform.ocapi->i2c_odl1_data, sizeof(data));
-		break;
-	case -1:
-		memcpy(data, platform.ocapi->i2c_odl01_data, sizeof(data));
-		break;
-	default:
-		assert(false);
-	}
-
-	snprintf(port_name, sizeof(port_name), "p8_%08x_e%dp%d", gcid,
-		 platform.ocapi->i2c_engine, platform.ocapi->i2c_port);
-	prlog(PR_DEBUG, "OCAPI: Looking for I2C port %s\n", port_name);
-
-	dt_for_each_compatible(dt_root, dn, "ibm,power9-i2c-port") {
-		if (streq(port_name, dt_prop_get(dn, "ibm,port-name"))) {
-			opal_id = dt_prop_get_u32(dn, "ibm,opal-id");
-			break;
-		}
-	}
-
-	if (!opal_id) {
-		prlog(PR_ERR, "OCAPI: Couldn't find I2C port %s\n", port_name);
-		return;
-	}
-
-	for (i = 0; i < 3; i++) {
-		rc = i2c_request_send(opal_id, 0x20, SMBUS_WRITE,
-				      platform.ocapi->i2c_offset[i], 1,
-				      &data[i], sizeof(data[i]), 120);
-		if (rc) {
-			/**
-			 * @fwts-label OCAPIDeviceResetFailed
-			 * @fwts-advice There was an error attempting to send
-			 * a reset signal over I2C to the OpenCAPI device.
-			 */
-			prlog(PR_ERR, "OCAPI: Error writing I2C reset signal: %d\n", rc);
-			break;
-		}
-		if (i != 0)
-			time_wait_ms(5);
-	}
-}
-
-static int odl_train(uint32_t gcid, uint32_t index, struct npu2_dev *dev)
-{
-	uint64_t reg, config_xscom;
-	int timeout = 3000;
-	prlog(PR_DEBUG, "OCAPI: %s: Training ODL\n", __func__);
-
-	switch (index) {
-	case 2:
-		config_xscom = OB0_ODL0_CONFIG;
-		break;
-	case 3:
-		config_xscom = OB0_ODL1_CONFIG;
-		break;
-	case 4:
-		config_xscom = OB3_ODL0_CONFIG;
-		break;
-	case 5:
-		config_xscom = OB3_ODL1_CONFIG;
-		break;
-	default:
-		assert(false);
-	}
-
-	/* Reset ODL */
-	reg = OB_ODL_CONFIG_RESET;
-	reg = SETFIELD(OB_ODL_CONFIG_VERSION, reg, 0b000001);
-	reg = SETFIELD(OB_ODL_CONFIG_TRAIN_MODE, reg, 0b0110);
-	reg = SETFIELD(OB_ODL_CONFIG_SUPPORTED_MODES, reg, 0b0010);
-	reg |= OB_ODL_CONFIG_X4_BACKOFF_ENABLE;
-	reg = SETFIELD(OB_ODL_CONFIG_PHY_CNTR_LIMIT, reg, 0b1111);
-	reg |= OB_ODL_CONFIG_DEBUG_ENABLE;
-	reg = SETFIELD(OB_ODL_CONFIG_FWD_PROGRESS_TIMER, reg, 0b0110);
-	xscom_write(gcid, config_xscom, reg);
-
-	reg &= ~OB_ODL_CONFIG_RESET;
-	xscom_write(gcid, config_xscom, reg);
-
-	reset_ocapi_device(gcid, index);
-
-	/* Transmit Pattern A */
-	reg = SETFIELD(OB_ODL_CONFIG_TRAIN_MODE, reg, 0b0001);
-	xscom_write(gcid, config_xscom, reg);
-	time_wait_ms(5);
-
-	/* Bump lanes - this improves training reliability */
-	npu2_opencapi_bump_ui_lane(dev);
-
-	/* Start training */
-	reg = SETFIELD(OB_ODL_CONFIG_TRAIN_MODE, reg, 0b1000);
-	xscom_write(gcid, config_xscom, reg);
-
-	do {
-		reg = get_odl_status(gcid, index);
-		if (GETFIELD(OB_ODL_STATUS_TRAINING_STATE_MACHINE, reg) == 0x7) {
-			prlog(PR_NOTICE,
-			      "OCAPI: Link %d on chip %u trained in %dms\n",
-			      index, gcid, 3000 - timeout);
-			return OPAL_SUCCESS;
-		}
-		time_wait_ms(1);
-	} while (timeout--);
-	prlog(PR_INFO, "OCAPI: Link %d on chip %u failed to train, retrying\n",
-	      index, gcid);
-	prlog(PR_INFO, "OCAPI: Link status: %016llx\n", reg);
-	return OPAL_HARDWARE;
-}
-
-static int64_t npu2_opencapi_get_link_state(struct pci_slot *slot, uint8_t *val)
-{
-	struct npu2_dev *dev = phb_to_npu2_dev_ocapi(slot->phb);
-	uint64_t reg;
-	int64_t link_width, rc = OPAL_SUCCESS;
-
-	reg = get_odl_status(dev->npu->chip_id, dev->index);
-	link_width = GETFIELD(OB_ODL_STATUS_TRAINED_MODE, reg);
-	switch (link_width) {
-	case 0b0001:
-		*val = OPAL_SHPC_LINK_UP_x4;
-		break;
-	case 0b0010:
-		*val = OPAL_SHPC_LINK_UP_x8;
-		break;
-	default:
-		rc = OPAL_HARDWARE;
-	}
-	return rc;
-}
-
-static struct pci_slot *npu2_opencapi_slot_create(struct phb *phb)
-{
-	struct pci_slot *slot;
-
-	slot = pci_slot_alloc(phb, NULL);
-	if (!slot)
-		return slot;
-
-	/* TODO: Figure out other slot functions */
-	slot->ops.get_presence_state = NULL;
-	slot->ops.get_link_state = npu2_opencapi_get_link_state;
-	slot->ops.get_power_state = NULL;
-	slot->ops.get_attention_state = NULL;
-	slot->ops.get_latch_state     = NULL;
-	slot->ops.set_power_state     = NULL;
-	slot->ops.set_attention_state = NULL;
-
-	return slot;
-}
-
 static int64_t npu2_opencapi_pcicfg_check(struct npu2_dev *dev, uint32_t offset,
 					  uint32_t size)
 {
@@ -1168,9 +951,6 @@ static void npu2_opencapi_setup_device(struct dt_node *dn_link, struct npu2 *n,
 				       struct npu2_dev *dev)
 {
 	struct dt_node *dn_phb;
-	struct pci_slot *slot;
-	int retries = 20;
-	int rc;
 	uint32_t dev_index, npu_index;
 	uint64_t mm_win[2];
 
@@ -1230,41 +1010,7 @@ static void npu2_opencapi_setup_device(struct dt_node *dn_link, struct npu2 *n,
 	set_fence_control(n->chip_id, n->xscom_base, dev->index, 0b00);
 
 	npu2_opencapi_phy_setup(dev);
-
-	do {
-		rc = odl_train(n->chip_id, dev->index, dev);
-	} while (rc != OPAL_SUCCESS && --retries);
-
-	if (rc != OPAL_SUCCESS && retries == 0) {
-		/**
-		 * @fwts-label OCAPILinkTrainingFailed
-		 * @fwts-advice The OpenCAPI link training procedure failed.
-		 * This indicates a hardware or firmware bug. OpenCAPI
-		 * functionality will not be available on this link.
-		 */
-		prlog(PR_ERR, "OCAPI: Link %d on chip %u failed to train\n",
-		      dev->index, n->chip_id);
-		prlog(PR_ERR, "OCAPI: Final link status: %016llx\n",
-		      get_odl_status(n->chip_id, dev->index));
-		goto failed;
-	}
-
-	otl_enabletx(n->chip_id, n->xscom_base, dev->index);
-
-	slot = npu2_opencapi_slot_create(&dev->phb_ocapi);
-	if (!slot)
-	{
-		/**
-		 * @fwts-label OCAPICannotCreatePHBSlot
-		 * @fwts-advice Firmware probably ran out of memory creating
-		 * NPU slot. OpenCAPI functionality could be broken.
-		 */
-		prlog(PR_ERR, "OCAPI: Cannot create PHB slot\n");
-	}
-
-	pci_register_phb(&dev->phb_ocapi, OPAL_DYNAMIC_PHB_ID);
-	return;
-failed:
+	npu2_opencapi_phy_prbs31(dev);
 	dt_add_property_string(dn_phb, "status", "error");
 	return;
 }
