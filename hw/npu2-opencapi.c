@@ -1240,8 +1240,8 @@ static void npu2_opencapi_setup_device(struct dt_node *dn_link, struct npu2 *n,
 	struct dt_node *dn_phb, *dn;
 	struct pci_slot *slot;
 	char port_name[17];
-	uint64_t mm_win[2];
-	int retries = 20;
+	uint64_t mm_win[2], val;
+	int retries = 5;
 	int rc;
 
 	dev_index = dt_prop_get_u32(dn_link, "ibm,npu-link-index");
@@ -1324,6 +1324,14 @@ static void npu2_opencapi_setup_device(struct dt_node *dn_link, struct npu2 *n,
 
 	set_fence_control(n->chip_id, n->xscom_base, dev->index, 0b00);
 
+
+	xscom_read(n->chip_id, 0x50012, &val); // ROOT CONTROL 2 register
+	prlog(PR_INFO, "OCAPI: read I2C I/O voltage: 0x%llx (bit24=%d)\n",
+		val, !!(val & PPC_BIT(24)));
+	// addr |= PPC_BIT(24); // TP_IO_VSB_OP0A_V1P8_EN: optic i2c control: op0a i2c 1.8 V enable
+	//prlog(PR_INFO, "OCAPI: set I2C I/O voltage to 1.8V\n");
+	// xscom_write(gcid, 0x50012, addr);
+
 	npu2_opencapi_phy_setup(dev);
 
 	do {
@@ -1380,11 +1388,11 @@ static void npu2_opencapi_probe(struct dt_node *dn)
 	links = dt_prop_get_u32(dn, "ibm,npu-links");
 
 	/* Don't try to init when we have an NVLink link */
-	dt_for_each_compatible(dn, link, "ibm,npu-link") {
-		prlog(PR_DEBUG, "OCAPI: NPU%d: NVLink link found, skipping\n",
-		      index);
-		return;
-	}
+	/* dt_for_each_compatible(dn, link, "ibm,npu-link") { */
+	/* 	prlog(PR_DEBUG, "OCAPI: NPU%d: NVLink link found, skipping\n", */
+	/* 	      index); */
+	/* 	return; */
+	/* } */
 
 	prlog(PR_INFO, "OCAPI: Chip %d Found OpenCAPI NPU%d (%d links) at %s\n",
 	      gcid, index, links, path);

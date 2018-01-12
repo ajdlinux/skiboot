@@ -30,6 +30,21 @@
 
 #include "astbmc.h"
 
+
+const struct platform_ocapi witherspoon_ocapi = {
+	.i2c_engine	= 1,
+	.i2c_port	= 4,
+	.i2c_offset	= { 0x3, 0x1, 0x1 },
+	.i2c_odl0_data	= { 0xF8, 0xF8, 0xFF },
+	/* fxb: overkill, will refine once it's working.  On redbud,
+	 * the current theory is that we should be using odl1, 2nd
+	 * GPU, so IO pin 1 => 0xFD
+	 */
+	.i2c_odl1_data	= { 0xF8, 0xF8, 0xFF },
+	.odl_phy_swap	= false,
+};
+
+
 /*
  * HACK: Hostboot doesn't export the correct data for the system VPD EEPROM
  *       for this system. So we need to work around it here.
@@ -48,6 +63,58 @@ static void vpd_dt_fixup(void)
 	}
 }
 
+static void create_ocapi_i2c_bus(void)
+{
+	struct dt_node *xscom, *i2cm, *i2c_bus;
+	prlog(PR_INFO, "OCAPI: Faking e1p4 I2C bus\n");
+	dt_for_each_compatible(dt_root, xscom, "ibm,xscom") {
+		i2cm = dt_find_by_name(xscom, "i2cm@a1000");
+		if (!i2cm) {
+			prlog(PR_INFO, "OCAPI: hack failed\n");
+			continue;
+		}
+
+		if (dt_find_by_name(i2cm, "i2c-bus@4"))
+			continue;
+
+		i2c_bus = dt_new_addr(i2cm, "i2c-bus", 4);
+		dt_add_property_cells(i2c_bus, "reg", 4);
+		dt_add_property_cells(i2c_bus, "bus-frequency", 0x61a80);
+		dt_add_property_strings(i2c_bus, "compatible",
+					"ibm,opal-i2c", "ibm,power8-i2c-port",
+					"ibm,power9-i2c-port");
+	}
+}
+
+static void fix_ocapi_link(void)
+{
+	struct dt_node *link;
+	struct dt_property *prop;
+
+	prlog(PR_ERR, "OCAPI: hacking link4 to be opencapi-compatible\n");
+
+	link = dt_find_by_name(dt_root, "link@4");
+	if (!link) {
+		prlog(PR_ERR, "OCAPI: cannot find link4 to patch\n");
+		return;
+	}
+
+	/*
+	 * On redbud, we use the lanes on obus3, in the middle
+	 * group. The lane mask we get from hostboot for link 4 is
+	 * correct.
+	 */
+
+	/* fix link type */
+	prop = __dt_find_property(link, "compatible");
+	if (!prop) {
+		prlog(PR_ERR, "OCAPI: cannot find compatible prop in link\n");
+		return;
+	}
+	dt_del_property(link, prop);
+	dt_add_property_string(link, "compatible", "ibm,npu-link-opencapi");
+}
+
 static bool witherspoon_probe(void)
 {
 	if (!dt_node_is_compatible(dt_root, "ibm,witherspoon"))
@@ -61,6 +128,9 @@ static bool witherspoon_probe(void)
 
 	vpd_dt_fixup();
 
+	/* opencapi fixup */
+	create_ocapi_i2c_bus();
+	fix_ocapi_link();
 	return true;
 }
 
@@ -169,4 +239,5 @@ DECLARE_PLATFORM(witherspoon) = {
 	.terminate		= ipmi_terminate,
 
 	.pci_get_slot_info	= dt_slot_get_slot_info,
+	.ocapi			= &witherspoon_ocapi,
 };
