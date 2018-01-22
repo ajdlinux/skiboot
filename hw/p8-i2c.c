@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#undef DEBUG
+#define DEBUG
 
 #include <opal.h>
 #include <skiboot.h>
@@ -1466,7 +1466,7 @@ static void p8_i2c_recover(struct timer *t __unused, void *data,
 			   uint64_t now __unused)
 {
 	struct p8_i2c_master *master = data;
-
+	DBG("fxb entering %s\n", __func__);
 	lock(&master->lock);
 
 	/*
@@ -1477,6 +1477,7 @@ static void p8_i2c_recover(struct timer *t __unused, void *data,
 	if (master->state != state_recovery &&
 		master->state != state_occache_dis) {
 		unlock(&master->lock);
+		DBG("fxb leaving %s early\n", __func__);
 		return;
 	}
 
@@ -1498,6 +1499,7 @@ static void p8_i2c_recover(struct timer *t __unused, void *data,
 	/* Re-check for new work */
 	p8_i2c_check_work(master);
 	unlock(&master->lock);
+	DBG("fxb leaving %s\n", __func__);
 }
 
 static void p8_i2c_enable_scache(struct timer *t __unused, void *data,
