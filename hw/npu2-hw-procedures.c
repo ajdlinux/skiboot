@@ -384,7 +384,9 @@ static uint32_t phy_reset_complete(struct npu2_dev *ndev)
 
 	if (ndev->type == NPU2_DEV_TYPE_OPENCAPI) {
 		phy_write(ndev, &NPU2_PHY_RX_AC_COUPLED, 1);
-		phy_write(ndev, &NPU2_PHY_RX_SPEED_SELECT, 1);
+//		phy_write(ndev, &NPU2_PHY_RX_SPEED_SELECT, 1);
+		prlog(PR_INFO, "OCAPI: link speed set at 25Gb/s\n");
+		phy_write(ndev, &NPU2_PHY_RX_SPEED_SELECT, 0);
 	}
 
 	FOR_EACH_LANE(ndev, lane) {
