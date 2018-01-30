@@ -207,6 +207,7 @@ uint32_t reset_ntl(struct npu2_dev *ndev);
 extern int nv_zcal_nominal;
 bool is_p9dd1(void);
 void npu2_opencapi_phy_setup(struct npu2_dev *dev);
+void npu2_opencapi_phy_prbs31(struct npu2_dev *dev);
 void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev);
 int64_t npu2_freeze_status(struct phb *phb __unused,
 			   uint64_t pe_number __unused,

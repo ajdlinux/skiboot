@@ -51,12 +51,20 @@
 #include <xive.h>
 #include <p9-adu.h>
 #include <i2c.h>
+#include <nvram.h>
 
 #define NPU_IRQ_LEVELS		35
 #define NPU_IRQ_LEVELS_XSL	23
 #define MAX_PE_HANDLE		((1 << 15) - 1)
 #define TL_MAX_TEMPLATE		63
 #define TL_RATE_BUF_SIZE	32
+
+enum npu2_link_training_state {
+	NPU2_TRAIN_DEFAULT, /* fully train the link */
+	NPU2_TRAIN_PRBS31,  /* used for Signal Integrity testing */
+	NPU2_TRAIN_NONE,    /* used for testing with loopback cable */
+};
+static enum npu2_link_training_state npu2_ocapi_training_state = NPU2_TRAIN_DEFAULT;
 
 static const struct phb_ops npu2_opencapi_ops;
 
@@ -1334,35 +1342,51 @@ static void npu2_opencapi_setup_device(struct dt_node *dn_link, struct npu2 *n,
 
 	npu2_opencapi_phy_setup(dev);
 
-	do {
-		rc = odl_train(n->chip_id, dev->index, dev);
-	} while (rc != OPAL_SUCCESS && --retries);
+	switch (npu2_ocapi_training_state) {
+	case NPU2_TRAIN_PRBS31:
+		prlog(PR_INFO,
+			"OCAPI: Link %d sending PRBS31 pattern per NVRAM setting\n",
+			dev->index);
+		npu2_opencapi_phy_prbs31(dev);
+		break;
 
-	if (rc != OPAL_SUCCESS && retries == 0) {
-		/**
-		 * @fwts-label OCAPILinkTrainingFailed
-		 * @fwts-advice The OpenCAPI link training procedure failed.
-		 * This indicates a hardware or firmware bug. OpenCAPI
-		 * functionality will not be available on this link.
-		 */
-		prlog(PR_ERR, "OCAPI: Link %d on chip %u failed to train\n",
-		      dev->index, n->chip_id);
-		prlog(PR_ERR, "OCAPI: Final link status: %016llx\n",
-		      get_odl_status(n->chip_id, dev->index));
-		goto failed;
-	}
+	case NPU2_TRAIN_DEFAULT:
+		do {
+			rc = odl_train(n->chip_id, dev->index, dev);
+		} while (rc != OPAL_SUCCESS && --retries);
 
-	otl_enabletx(n->chip_id, n->xscom_base, dev->index);
+		if (rc != OPAL_SUCCESS && retries == 0) {
+			/**
+			 * @fwts-label OCAPILinkTrainingFailed
+			 * @fwts-advice The OpenCAPI link training procedure failed.
+			 * This indicates a hardware or firmware bug. OpenCAPI
+			 * functionality will not be available on this link.
+			 */
+			prlog(PR_ERR,
+				"OCAPI: Link %d on chip %u failed to train\n",
+				dev->index, n->chip_id);
+			prlog(PR_ERR, "OCAPI: Final link status: %016llx\n",
+				get_odl_status(n->chip_id, dev->index));
+			goto failed;
+		}
 
-	slot = npu2_opencapi_slot_create(&dev->phb_ocapi);
-	if (!slot)
-	{
-		/**
-		 * @fwts-label OCAPICannotCreatePHBSlot
-		 * @fwts-advice Firmware probably ran out of memory creating
-		 * NPU slot. OpenCAPI functionality could be broken.
-		 */
-		prlog(PR_ERR, "OCAPI: Cannot create PHB slot\n");
+		otl_enabletx(n->chip_id, n->xscom_base, dev->index);
+
+		slot = npu2_opencapi_slot_create(&dev->phb_ocapi);
+		if (!slot) {
+			/**
+			 * @fwts-label OCAPICannotCreatePHBSlot
+			 * @fwts-advice Firmware probably ran out of memory creating
+			 * NPU slot. OpenCAPI functionality could be broken.
+			 */
+			prlog(PR_ERR, "OCAPI: Cannot create PHB slot\n");
+		}
+		break;
+
+	case NPU2_TRAIN_NONE:
+		prlog(PR_INFO, "OCAPI: Link %d not trained per NVRAM setting\n",
+			dev->index);
+		break;
 	}
 
 	pci_register_phb(&dev->phb_ocapi, OPAL_DYNAMIC_PHB_ID);
@@ -1442,9 +1466,28 @@ failed:
 	free(n);
 }
 
+static void read_nvram_training_state(void)
+{
+	const char *state;
+
+	state = nvram_query("opencapi-link-training");
+	if (state) {
+		if (!strcmp(state, "prbs31"))
+			npu2_ocapi_training_state = NPU2_TRAIN_PRBS31;
+		else if (!strcmp(state, "none"))
+			npu2_ocapi_training_state = NPU2_TRAIN_NONE;
+		else
+			prlog(PR_WARNING,
+			      "OCAPI: invalid training state in NVRAM: %s\n",
+			      state);
+	}
+}
+
 void probe_npu2_opencapi(void)
 {
 	struct dt_node *np_npu;
+
+	read_nvram_training_state();
 
 	dt_for_each_compatible(dt_root, np_npu, "ibm,power9-npu")
 		npu2_opencapi_probe(np_npu);
