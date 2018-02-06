@@ -926,7 +926,8 @@ static void p8_i2c_check_status(struct p8_i2c_master *master)
 	 * nothing to check. Error states are handled when starting
 	 * a new request.
 	 */
-	if (master->state == state_idle || master->state == state_occache_dis)
+	if (master->state == state_idle || master->state == state_occache_dis
+		|| master->state == state_recovery)
 		return;
 
 	/* A non-idle master should always have a pending request */
