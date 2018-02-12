@@ -936,10 +936,10 @@ void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev)
 		status_xscom = OB0_ODL1_TRAINING_STATUS;
 		break;
 	case 4:
-		status_xscom = OB3_ODL0_TRAINING_STATUS;
+		status_xscom = OB3_ODL1_TRAINING_STATUS;
 		break;
 	case 5:
-		status_xscom = OB3_ODL1_TRAINING_STATUS;
+		status_xscom = OB3_ODL0_TRAINING_STATUS;
 		break;
 	default:
 		assert(false);

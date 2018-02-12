@@ -115,10 +115,10 @@ static uint64_t get_odl_status(uint32_t gcid, uint64_t index) {
 		status_xscom = OB0_ODL1_STATUS;
 		break;
 	case 4:
-		status_xscom = OB3_ODL0_STATUS;
+		status_xscom = OB3_ODL1_STATUS;
 		break;
 	case 5:
-		status_xscom = OB3_ODL1_STATUS;
+		status_xscom = OB3_ODL0_STATUS;
 		break;
 	default:
 		assert(false);
@@ -236,8 +236,12 @@ static void enable_odl_phy_mux(uint32_t gcid, int index)
 	reg |= OBUS_IOOL_PHY_CONFIG_ODL1_ENABLED;
 
 	/*
-	 * Swap ODL1 to use brick 2 lanes instead of brick 1 lanes if using a
-	 * 22-pin cable for OpenCAPI connection.
+	 * Based on the platform, we may have to activate an extra mux
+	 * to connect the ODL to the right set of lanes.
+	 *
+	 * FIXME: to be checked once we have merged with nvlink
+	 * code. Need to verify that it's a platform parameter and not
+	 * slot-dependent
 	 */
 	if (platform.ocapi->odl_phy_swap)
 		reg |= OBUS_IOOL_PHY_CONFIG_ODL_PHY_SWAP;
@@ -819,10 +823,10 @@ static int odl_train(uint32_t gcid, uint32_t index, struct npu2_dev *dev)
 		config_xscom = OB0_ODL1_CONFIG;
 		break;
 	case 4:
-		config_xscom = OB3_ODL0_CONFIG;
+		config_xscom = OB3_ODL1_CONFIG;
 		break;
 	case 5:
-		config_xscom = OB3_ODL1_CONFIG;
+		config_xscom = OB3_ODL0_CONFIG;
 		break;
 	default:
 		assert(false);
