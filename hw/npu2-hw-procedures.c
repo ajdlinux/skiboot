@@ -648,18 +648,25 @@ static uint32_t phy_rx_dccal_complete(struct npu2_dev *ndev)
 
 static uint32_t phy_rx_clock_sel(struct npu2_dev *ndev)
 {
-	/*
-	 * Change the RX clk mux control to be done by software instead of HW. This
-	 * avoids glitches caused by changing the mux setting.
-	 *
-	 * Work around a known DL bug by doing these writes twice.
-	 */
-	npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev), 0x80000002, 0x80000003);
-	npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev), 0x80000002, 0x80000003);
+	if (ndev->type != NPU2_DEV_TYPE_OPENCAPI) {
+		/*
+		 * Change the RX clk mux control to be done by
+		 * software instead of HW. This avoids glitches caused
+		 * by changing the mux setting.
+		 *
+		 * Work around a known DL bug by doing these writes
+		 * twice.
+		 */
+		npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev),
+				0x80000002, 0x80000003);
+		npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev),
+				0x80000002, 0x80000003);
 
-	npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev), 0x80000000, 0x80000003);
-	npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev), 0x80000000, 0x80000003);
-
+		npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev),
+				0x80000000, 0x80000003);
+		npu2_write_mask_4b(ndev->npu, NPU2_NTL_DL_CLK_CTRL(ndev),
+				0x80000000, 0x80000003);
+	}
 	return PROCEDURE_NEXT;
 }
 
