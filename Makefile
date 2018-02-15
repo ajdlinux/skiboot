@@ -18,7 +18,7 @@ endif
 #
 # Main debug switch
 #
-DEBUG ?= 0
+DEBUG ?= 1
 
 # Run tests under valgrind?
 USE_VALGRIND ?= 1

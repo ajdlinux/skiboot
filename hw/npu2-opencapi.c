@@ -687,20 +687,20 @@ static void setup_global_mmio_bar(uint32_t gcid, uint32_t scom_base,
 
 	prlog(PR_DEBUG, "OCAPI: patching up PHY0 bar, %s\n", __func__);
 	phys_map_get(gcid, NPU_PHY, 0, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
-		addr, size);
+//	write_bar(gcid, scom_base,
+//		  NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
+//		addr, size);
 	prlog(PR_DEBUG, "OCAPI: patching up PHY1 bar, %s\n", __func__);
 	phys_map_get(gcid, NPU_PHY, 1, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
-		addr, size);
+//	write_bar(gcid, scom_base,
+//		  NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
+//		addr, size);
 
 	prlog(PR_DEBUG, "OCAPI: setup global mmio, %s\n", __func__);
 	phys_map_get(gcid, NPU_REGS, 0, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
-		addr, size);
+//	write_bar(gcid, scom_base,
+//		  NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
+//		addr, size);
 	reg[0] = addr;
 	reg[1] = size;
 }
@@ -721,18 +721,18 @@ static void setup_afu_mmio_bars(uint32_t gcid, uint32_t scom_base,
 	phys_map_get(gcid, NPU_OCAPI_MMIO, dev->index, &addr, &size);
 
 	prlog(PR_DEBUG, "OCAPI: AFU MMIO set to %llx, size %llx\n", addr, size);
-	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, offset), addr,
-		size);
+//	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, offset), addr,
+//		size);
 	dev->bars[0].npu2_bar.base = addr;
 	dev->bars[0].npu2_bar.size = size;
 
 	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_ADDR, 0ull, addr >> 16);
 	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_SIZE, reg, ilog2(size >> 16));
 	prlog(PR_DEBUG, "OCAPI: PA translation %llx\n", reg);
-	npu2_scom_write(gcid, scom_base,
-			NPU2_REG_OFFSET(stack, NPU2_BLOCK_CTL,
-					pa_offset),
-			NPU2_MISC_DA_LEN_8B, reg);
+//	npu2_scom_write(gcid, scom_base,
+//			NPU2_REG_OFFSET(stack, NPU2_BLOCK_CTL,
+//					pa_offset),
+//			NPU2_MISC_DA_LEN_8B, reg);
 }
 
 /* Procedure 13.1.3.9 - AFU Config BARs */
@@ -746,8 +746,8 @@ static void setup_afu_config_bars(uint32_t gcid, uint32_t scom_base,
 	prlog(PR_DEBUG, "OCAPI: %s: Setup AFU Config BARs\n", __func__);
 	phys_map_get(gcid, NPU_GENID, stack_num, &addr, &size);
 	prlog(PR_DEBUG, "OCAPI: Assigning GENID BAR: %016llx\n", addr);
-	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR),
-		addr, size);
+//	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR),
+//		addr, size);
 	dev->bars[1].npu2_bar.base = addr;
 	dev->bars[1].npu2_bar.size = size;
 }
@@ -1432,10 +1432,10 @@ static void npu2_opencapi_probe(struct dt_node *dn)
 	if (rc)
 		goto failed;
 
-	dt_for_each_compatible(dn, link, "ibm,npu-link-opencapi") {
-		npu2_opencapi_setup_device(link, n, &n->devices[i]);
-		i++;
-	}
+//	dt_for_each_compatible(dn, link, "ibm,npu-link-opencapi") {
+//		npu2_opencapi_setup_device(link, n, &n->devices[i]);
+//		i++;
+//	}
 
 	return;
 failed:
@@ -1446,8 +1446,11 @@ void probe_npu2_opencapi(void)
 {
 	struct dt_node *np_npu;
 
-	dt_for_each_compatible(dt_root, np_npu, "ibm,power9-npu")
-		npu2_opencapi_probe(np_npu);
+	dt_for_each_compatible(dt_root, np_npu, "ibm,power9-npu") {
+//		npu2_opencapi_probe(np_npu);
+		uint32_t gcid = dt_get_chip_id(np_npu);
+		set_pb_hp_opencapi(gcid, 4);
+	}
 }
 
 static const struct phb_ops npu2_opencapi_ops = {
