@@ -1449,7 +1449,7 @@ void probe_npu2_opencapi(void)
 	dt_for_each_compatible(dt_root, np_npu, "ibm,power9-npu") {
 //		npu2_opencapi_probe(np_npu);
 		uint32_t gcid = dt_get_chip_id(np_npu);
-		set_pb_hp_opencapi(gcid, 4);
+//		set_pb_hp_opencapi(gcid, 4);
 	}
 }
 
