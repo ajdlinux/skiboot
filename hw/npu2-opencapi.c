@@ -289,11 +289,15 @@ static void set_pb_hp_opencapi(uint32_t gcid, int index)
 	case 2:
 	case 3:
 		/* Configure OPT0 as an OpenCAPI link */
+                reg = SETFIELD(PPC_BITMASK(32, 33), reg, 0b11);
+		p9_adu_set_pb_hp_mode(gcid, reg);
 		reg = SETFIELD(PPC_BITMASK(32, 33), reg, 0b10);
 		break;
 	case 4:
 	case 5:
 		/* Configure OPT3 as an OpenCAPI link */
+                reg = SETFIELD(PPC_BITMASK(38, 39), reg, 0b11);
+		p9_adu_set_pb_hp_mode(gcid, reg);
 		reg = SETFIELD(PPC_BITMASK(38, 39), reg, 0b10);
 		break;
 	default:
