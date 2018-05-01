@@ -3746,7 +3746,7 @@ static void phb4_init_capp_regs(struct phb4 *p, uint32_t capp_eng)
 	xscom_write(p->chip_id, CAPP_FIR_ACTION1 + offset, 0x2b9c0001240E0000);
 
 	/* CAPP FIR MASK */
-	xscom_write(p->chip_id, CAPP_FIR_MASK + offset, 0x80031f98d8717000);
+	xscom_write(p->chip_id, CAPP_FIR_MASK + offset, 0x80031f98dc717000);
 
 	/* Mask the CAPP PSL Credit Timeout Register error */
 	xscom_write_mask(p->chip_id, CAPP_FIR_MASK + offset,
