@@ -920,6 +920,7 @@ static void npu2_hw_init(struct npu2 *p)
 	}
 
 	/* Static initialization of every relaxed-ordering cfg[2] register */
+	// TODO: Confirm any impact on OpenCAPI and potentially limit stacks if needed
 	val = NPU2_RELAXED_ORDERING_CMD_CL_DMA_W |
 	      NPU2_RELAXED_ORDERING_CMD_CL_DMA_W_HP |
 	      NPU2_RELAXED_ORDERING_CMD_CL_DMA_INJ |
@@ -1356,6 +1357,62 @@ static void assign_mmio_bars(uint64_t gcid, uint32_t scom, uint64_t reg[2], uint
 		    mm_win[0];
 }
 
+static void enable_nvlink(struct npu2_dev *dev)
+{
+	struct npu2 *npu = dev->npu;
+	int stack = NPU2_STACK_STCK_0 + NPU2DEV_STACK(dev); // TODO need to figure out nvlink vs opencapi implementations here
+	int block;
+	uint64_t addr, val;
+
+	/* CQ_SM Misc Config #0 - enable NVLink mode */
+	for (block = NPU2_BLOCK_SM_0; block <= NPU2_BLOCK_SM_3; block++) {
+		addr = NPU2_REG_OFFSET(stack, block, NPU2_CQ_SM_MISC_CFG0);
+		val = npu2_scom_read(npu->chip_id, npu->xscom_base, addr,
+				     NPU2_MISC_DA_LEN_8B);
+		val |= NPU2_CQ_SM_MISC_CFG0_CONFIG_NVLINK_MODE;
+		npu2_scom_write(npu->chip_id, npu->xscom_base, addr,
+				NPU2_MISC_DA_LEN_8B, val);
+	}
+
+	/* CQ_CTL Misc Config #0 - enable NVLink mode */
+	addr = NPU2_REG_OFFSET(stack, NPU2_BLOCK_CTL, NPU2_CQ_CTL_MISC_CFG);
+	val = npu2_scom_read(npu->chip_id, npu->xscom_base, addr,
+			     NPU2_MISC_DA_LEN_8B);
+	val |= NPU2_CQ_CTL_MISC_CFG_CONFIG_NVLINK_MODE;
+	npu2_scom_write(npu->chip_id, npu->xscom_base, addr,
+			NPU2_MISC_DA_LEN_8B, val);
+
+	/* CQ_DAT Misc Config #1 - enable NVLink mode */
+	addr = NPU2_REG_OFFSET(stack, NPU2_BLOCK_DAT, NPU2_CQ_DAT_MISC_CFG);
+	val = npu2_scom_read(npu->chip_id, npu->xscom_base, addr,
+			     NPU2_MISC_DA_LEN_8B);
+	val |= NPU2_CQ_DAT_MISC_CFG_CONFIG_NVLINK_MODE;
+	npu2_scom_write(npu->chip_id, npu->xscom_base, addr,
+			NPU2_MISC_DA_LEN_8B, val);
+
+	/* NTL Misc Config 2 - enable NTL brick and checks */
+	addr = NPU2_NTL_MISC_CFG2(dev);
+	val = npu2_scom_read(npu->chip_id, npu->xscom_base, addr,
+			     NPU2_MISC_DA_LEN_8B);
+	val |= NPU2_NTL_MISC_CFG2_BRICK_ENABLE;
+	val |= NPU2_NTL_MISC_CFG2_NDL_TX_PARITY_ENA;
+	val |= NPU2_NTL_MISC_CFG2_NDL_PRI_PARITY_ENA;
+	val |= NPU2_NTL_MISC_CFG2_RCV_CREDIT_OVERFLOW_ENA;
+	npu2_scom_write(npu->chip_id, npu->xscom_base, addr,
+			NPU2_MISC_DA_LEN_8B, val);
+
+	/* High Water Marks */
+	for (block = NPU2_BLOCK_SM_0; block <= NPU2_BLOCK_SM_3; block++) {
+		addr = NPU2_REG_OFFSET(stack, block, NPU2_HIGH_WATER_MARKS);
+		val = npu2_scom_read(npu->chip_id, npu->xscom_base, addr,
+				     NPU2_MISC_DA_LEN_8B);
+		val &= ~NPU2_HIGH_WATER_MARKS_PWR0;
+		val |= PPC_BIT(6) | PPC_BIT(7) | PPC_BIT(11);
+		npu2_scom_write(npu->chip_id, npu->xscom_base, addr,
+				NPU2_MISC_DA_LEN_8B, val);
+	}
+}
+
 /*
  * Set up NPU for NVLink and create PCI root device node
  * accordingly.
@@ -1363,59 +1420,12 @@ static void assign_mmio_bars(uint64_t gcid, uint32_t scom, uint64_t reg[2], uint
 int npu2_nvlink_init_npu(struct npu2 *npu)
 {
 	struct dt_node *np;
-	uint64_t reg[2], mm_win[2], val;
+	uint64_t reg[2], mm_win[2];
 
-	/* TODO: Clean this up with register names, etc. when we get
-	 * time. This just turns NVLink mode on in each brick and should
-	 * get replaced with a patch from ajd once we've worked out how
-	 * things are going to work there.
-	 *
-	 * Obviously if the year is now 2020 that didn't happen and you
-	 * should fix this :-) */
-	xscom_write_mask(npu->chip_id, 0x5011000, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011030, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011060, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011090, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011200, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011230, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011260, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011290, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011400, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011430, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011460, PPC_BIT(58), PPC_BIT(58));
-	xscom_write_mask(npu->chip_id, 0x5011490, PPC_BIT(58), PPC_BIT(58));
-
-	xscom_write_mask(npu->chip_id, 0x50110c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(npu->chip_id, 0x50112c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(npu->chip_id, 0x50114c0, PPC_BIT(53), PPC_BIT(53));
-	xscom_write_mask(npu->chip_id, 0x50110f1, PPC_BIT(41), PPC_BIT(41));
-	xscom_write_mask(npu->chip_id, 0x50112f1, PPC_BIT(41), PPC_BIT(41));
-	xscom_write_mask(npu->chip_id, 0x50114f1, PPC_BIT(41), PPC_BIT(41));
-
-	val = NPU2_NTL_MISC_CFG2_BRICK_ENABLE |
-	      NPU2_NTL_MISC_CFG2_NDL_TX_PARITY_ENA |
-	      NPU2_NTL_MISC_CFG2_NDL_PRI_PARITY_ENA |
-	      NPU2_NTL_MISC_CFG2_RCV_CREDIT_OVERFLOW_ENA;
-	xscom_write_mask(npu->chip_id, 0x5011110, val, val);
-	xscom_write_mask(npu->chip_id, 0x5011130, val, val);
-	xscom_write_mask(npu->chip_id, 0x5011310, val, val);
-	xscom_write_mask(npu->chip_id, 0x5011330, val, val);
-	xscom_write_mask(npu->chip_id, 0x5011510, val, val);
-	xscom_write_mask(npu->chip_id, 0x5011530, val, val);
-
-	val = PPC_BIT(6) | PPC_BIT(7) | PPC_BIT(11);
-	xscom_write_mask(npu->chip_id, 0x5011009, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011039, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011069, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011099, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011209, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011239, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011269, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011299, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011409, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011439, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011469, val, PPC_BITMASK(6,11));
-	xscom_write_mask(npu->chip_id, 0x5011499, val, PPC_BITMASK(6,11));
+	for (int i = 0; i < npu->total_devices; i++) {
+		if (npu->devices[i].type == NPU2_DEV_TYPE_NVLINK)
+			enable_nvlink(&npu->devices[i]);
+	}
 
 	/* Reassign the BARs */
 	assign_mmio_bars(npu->chip_id, npu->xscom_base, reg, mm_win);

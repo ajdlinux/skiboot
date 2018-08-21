@@ -152,6 +152,128 @@ void npu2_i2c_presence_detect(struct npu2 *npu)
 	}
 }
 
+/* Procedure 13.1.3.1, OpenCAPI NPU Workbook - Select OCAPI vs NVLink */
+static void set_brick_config(struct npu2 *npu)
+{
+	/* Step 1 - Set Transport MUX controls to select correct OTL or NTL */
+	uint64_t reg;
+	uint64_t ndlmux_brk0to2, ocmux_brk0to1, ocmux_brk4to5;
+	uint64_t phy_config_scom;
+	struct npu2_dev *dev;
+
+	prlog(PR_DEBUG, "NPU: %s: Setting transport mux controls\n", __func__);
+
+	/* Optical IO Transport Mux Config for Bricks 0-2 and 4-5 */
+	reg = npu2_scom_read(npu->chip_id, npu->xscom_base, NPU2_MISC_OPTICAL_IO_CFG0,
+			     NPU2_MISC_DA_LEN_8B);
+	ndlmux_brk0to2 = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg);
+	ocmux_brk0to1 = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg);
+	ocmux_brk4to5 = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg);
+	for (int i = 0; i < npu->total_devices; i++) {
+	        dev = &npu->devices[i];
+		if (dev->type == NPU2_DEV_TYPE_UNKNOWN)
+			continue;
+
+		switch (dev->brick_index) {
+		case 0:  /* NTL0.0 */
+			assert(dev->type == NPU2_DEV_TYPE_NVLINK);
+			ndlmux_brk0to2 |= 0b100;
+			break;
+		case 1:  /* NTL0.1 */
+			assert(dev->type == NPU2_DEV_TYPE_NVLINK);
+			ndlmux_brk0to2 |= 0b010;
+			break;
+		case 2:	 /* NTL1.0 / OTL1.0 */
+			if (dev->type == NPU2_DEV_TYPE_OPENCAPI) {
+				ndlmux_brk0to2 &= ~0b100;
+				ocmux_brk0to1 |= 0b10;
+			} else {
+				ndlmux_brk0to2 |= 0b001;
+			}
+			break;
+		case 3:	 /* NTL1.1 / OTL1.1 */
+			if (dev->type == NPU2_DEV_TYPE_OPENCAPI) {
+				ndlmux_brk0to2 &= ~0b010;
+				ocmux_brk0to1 |= 0b01;
+			}
+			break;
+		case 4:	 /* NTL2.0 / OTL2.0 */
+			if (dev->type == NPU2_DEV_TYPE_OPENCAPI) {
+				ocmux_brk4to5 |= 0b10;
+			} else {
+				ocmux_brk4to5 &= ~0b10;
+			}
+			break;
+		case 5:	 /* NTL2.1 / OTL2.1 */
+			if (dev->type == NPU2_DEV_TYPE_OPENCAPI) {
+				ocmux_brk4to5 |= 0b01;
+			} else {
+				ocmux_brk4to5 &= ~0b01;
+			}
+			break;
+		default:
+			assert(false);
+		}
+	}
+
+	reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg, ndlmux_brk0to2);
+	reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg, ocmux_brk0to1);
+	reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg, ocmux_brk4to5);
+	npu2_scom_write(npu->chip_id, npu->xscom_base, NPU2_MISC_OPTICAL_IO_CFG0,
+			NPU2_MISC_DA_LEN_8B, reg);
+
+	/*
+	 * PowerBus Optical Miscellaneous Config Register
+	 */
+	xscom_read(npu->chip_id, PU_IOE_PB_MISC_CFG, &reg);
+	for (int i = 0; i < npu->total_devices; i++) {
+		dev = &npu->devices[i];
+		switch (dev->brick_index) {
+		case 3:
+			if (dev->type == NPU2_DEV_TYPE_NVLINK)
+				reg = SETFIELD(PU_IOE_PB_MISC_CFG_SEL_03_NPU_NOT_PB, reg, 1);
+			break;
+		case 4:
+			reg = SETFIELD(PU_IOE_PB_MISC_CFG_SEL_04_NPU_NOT_PB, reg, 1);
+			break;
+		case 5:
+			reg = SETFIELD(PU_IOE_PB_MISC_CFG_SEL_05_NPU_NOT_PB, reg, 1);
+			break;
+		default:
+			break;
+		}
+	}
+	xscom_write(npu->chip_id, PU_IOE_PB_MISC_CFG, reg);
+
+
+	/* Some... other step from the OpenCAPI workbook. TODO */
+
+	for (int i = 0; i < npu->total_devices; i++) {
+		dev = &npu->devices[i];
+		if (dev->type != NPU2_DEV_TYPE_OPENCAPI)
+			continue;
+		switch (dev->brick_index) {
+		case 2:
+		case 3:
+			phy_config_scom = OBUS_LL0_IOOL_PHY_CONFIG;
+			break;
+		case 4:
+		case 5:
+			phy_config_scom = OBUS_LL3_IOOL_PHY_CONFIG;
+			break;
+		default:
+			assert(false);
+		}
+		/* Disable NV-Link link layers */
+		xscom_read(npu->chip_id, phy_config_scom, &reg);
+		reg &= ~OBUS_IOOL_PHY_CONFIG_NV0_NPU_ENABLED;
+		reg &= ~OBUS_IOOL_PHY_CONFIG_NV1_NPU_ENABLED;
+		reg &= ~OBUS_IOOL_PHY_CONFIG_NV2_NPU_ENABLED;
+		xscom_write(npu->chip_id, phy_config_scom, reg);
+	}
+
+}
+
 static struct npu2 *setup_npu(struct dt_node *dn)
 {
 	struct npu2 *npu;
@@ -313,6 +435,7 @@ void probe_npu2(void)
 		if (!npu)
 			continue;
 		platform.npu2_device_detect(npu);
+		set_brick_config(npu);
 		setup_devices(npu);
 	}
 }

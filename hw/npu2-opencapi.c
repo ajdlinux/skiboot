@@ -150,112 +150,6 @@ static uint64_t get_odl_status(uint32_t gcid, uint64_t index) {
 	return reg;
 }
 
-static void disable_nvlink(uint32_t gcid, int index)
-{
-	uint64_t phy_config_scom, reg;
-
-	switch (index) {
-	case 2:
-	case 3:
-		phy_config_scom = OBUS_LL0_IOOL_PHY_CONFIG;
-		break;
-	case 4:
-	case 5:
-		phy_config_scom = OBUS_LL3_IOOL_PHY_CONFIG;
-		break;
-	default:
-		assert(false);
-	}
-	/* Disable NV-Link link layers */
-	xscom_read(gcid, phy_config_scom, &reg);
-	reg &= ~OBUS_IOOL_PHY_CONFIG_NV0_NPU_ENABLED;
-	reg &= ~OBUS_IOOL_PHY_CONFIG_NV1_NPU_ENABLED;
-	reg &= ~OBUS_IOOL_PHY_CONFIG_NV2_NPU_ENABLED;
-	xscom_write(gcid, phy_config_scom, reg);
-}
-
-/* Procedure 13.1.3.1 - select OCAPI vs NVLink for bricks 2-3/4-5 */
-
-static void set_transport_mux_controls(uint32_t gcid, uint32_t scom_base,
-				       int index, enum npu2_dev_type type)
-{
-	/* Step 1 - Set Transport MUX controls to select correct OTL or NTL */
-	uint64_t reg;
-	uint64_t field;
-
-	/* TODO: Rework this to select for NVLink too */
-	assert(type == NPU2_DEV_TYPE_OPENCAPI);
-
-	prlog(PR_DEBUG, "OCAPI: %s: Setting transport mux controls\n", __func__);
-
-	/* Optical IO Transport Mux Config for Bricks 0-2 and 4-5 */
-	reg = npu2_scom_read(gcid, scom_base, NPU2_MISC_OPTICAL_IO_CFG0,
-			     NPU2_MISC_DA_LEN_8B);
-	switch (index) {
-	case 0:
-	case 1:
-		/* not valid for OpenCAPI */
-		assert(false);
-		break;
-	case 2:	 /* OTL1.0 */
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg);
-		field &= ~0b100;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg,
-			       field);
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg);
-		field |= 0b10;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg,
-			       field);
-		break;
-	case 3:	 /* OTL1.1 */
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg);
-		field &= ~0b010;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_NDLMUX_BRK0TO2, reg,
-			       field);
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg);
-		field |= 0b01;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK0TO1, reg,
-			       field);
-		break;
-	case 4:	 /* OTL2.0 */
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg);
-		field |= 0b10;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg,
-			       field);
-		break;
-	case 5:	 /* OTL2.1 */
-		field = GETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg);
-		field |= 0b01;
-		reg = SETFIELD(NPU2_MISC_OPTICAL_IO_CFG0_OCMUX_BRK4TO5, reg,
-			       field);
-		break;
-	default:
-		assert(false);
-	}
-	npu2_scom_write(gcid, scom_base, NPU2_MISC_OPTICAL_IO_CFG0,
-			NPU2_MISC_DA_LEN_8B, reg);
-
-	/*
-	 * PowerBus Optical Miscellaneous Config Register - select
-	 * OpenCAPI for b4/5 and A-Link for b3
-	 */
-	xscom_read(gcid, PU_IOE_PB_MISC_CFG, &reg);
-	switch (index) {
-	case 0:
-	case 1:
-	case 2:
-	case 3:
-		break;
-	case 4:
-		reg = SETFIELD(PU_IOE_PB_MISC_CFG_SEL_04_NPU_NOT_PB, reg, 1);
-		break;
-	case 5:
-		reg = SETFIELD(PU_IOE_PB_MISC_CFG_SEL_05_NPU_NOT_PB, reg, 1);
-		break;
-	}
-	xscom_write(gcid, PU_IOE_PB_MISC_CFG, reg);
-}
-
 static void enable_odl_phy_mux(uint32_t gcid, int index)
 {
 	uint64_t reg;
@@ -533,9 +427,6 @@ static void brick_config(uint32_t gcid, uint32_t scom_base, int index)
 	 * We assume at this point that the PowerBus Hotplug Mode Control
 	 * register is correctly set by Hostboot
 	 */
-	disable_nvlink(gcid, index);
-	set_transport_mux_controls(gcid, scom_base, index,
-				   NPU2_DEV_TYPE_OPENCAPI);
 	enable_odl_phy_mux(gcid, index);
 	disable_alink_fp(gcid);
 	enable_xsl_clocks(gcid, scom_base, index);
