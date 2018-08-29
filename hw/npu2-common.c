@@ -359,26 +359,19 @@ failed:
 	return NULL;
 }
 
-static void setup_devices(struct npu2 *npu)
+static void add_link_type_properties(struct npu2 *npu)
 {
-	bool nvlink_detected = false, ocapi_detected = false;
 	struct npu2_dev *dev;
 
-	/*
-	 * TODO: In future, we'll do brick configuration here to support mixed
-	 * setups.
-	 */
 	for (int i = 0; i < npu->total_devices; i++) {
 		dev = &npu->devices[i];
 		switch (dev->type) {
 		case NPU2_DEV_TYPE_NVLINK:
-			nvlink_detected = true;
 			dt_add_property_strings(dev->dt_node,
 						"ibm,npu-link-type",
 						"nvlink");
 			break;
 		case NPU2_DEV_TYPE_OPENCAPI:
-			ocapi_detected = true;
 			dt_add_property_strings(dev->dt_node,
 						"ibm,npu-link-type",
 						"opencapi");
@@ -391,16 +384,6 @@ static void setup_devices(struct npu2 *npu)
 						"unknown");
 		}
 	}
-
-	if (nvlink_detected && ocapi_detected) {
-		prlog(PR_ERR, "NPU: NVLink and OpenCAPI devices on same chip not supported, aborting NPU init\n");
-		return;
-	}
-
-	if (nvlink_detected)
-		npu2_nvlink_init_npu(npu);
-	else if (ocapi_detected)
-		npu2_opencapi_init_npu(npu);
 }
 
 void probe_npu2(void)
@@ -436,7 +419,9 @@ void probe_npu2(void)
 		if (!npu)
 			continue;
 		platform.npu2_device_detect(npu);
+		add_link_type_properties(npu);
 		set_brick_config(npu);
-		setup_devices(npu);
+		npu2_nvlink_init_npu(npu);
+		npu2_opencapi_init_npu(npu);
 	}
 }
