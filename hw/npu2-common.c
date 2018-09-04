@@ -334,6 +334,7 @@ static struct npu2 *setup_npu(struct dt_node *dn)
 		dev->link_index = dt_prop_get_u32(np, "ibm,npu-link-index");
 		/* May be overridden by platform presence detection */
 		dev->brick_index = dev->link_index;
+		dev->group_id = dt_prop_get_u32(np, "ibm,npu-group-id");
 		/* Will be overridden by presence detection */
 		dev->type = NPU2_DEV_TYPE_UNKNOWN;
 		dev->npu = npu;

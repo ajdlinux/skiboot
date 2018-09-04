@@ -122,6 +122,7 @@ struct npu2_dev {
 	enum npu2_dev_type	type;
 	uint32_t		link_index;
 	uint32_t		brick_index;
+	uint32_t		group_id;
 	uint64_t		pl_xscom_base;
 	struct dt_node		*dt_node;
 	struct npu2_pcie_bar	bars[2];

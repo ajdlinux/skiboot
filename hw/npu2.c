@@ -1660,12 +1660,15 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	PCI_VIRT_CFG_INIT_RO(pvd, pos + 1, 1, 0);
 }
 
-static uint32_t npu_allocate_bdfn(struct npu2 *p, uint32_t group)
+static uint32_t npu_allocate_bdfn(struct npu2 *p, uint32_t group, int max_devices) // TODO: Find a neater way to do max devices?
 {
 	int i;
 	int bdfn = (group << 3);
 
-	for (i = 0; i < p->total_devices; i++) {
+	for (i = 0; i < max_devices; i++) {
+		if (p->devices[i].type != NPU2_DEV_TYPE_NVLINK)
+			continue;
+
 		if ((p->devices[i].bdfn & 0xf8) == (bdfn & 0xf8))
 			bdfn++;
 	}
@@ -1673,46 +1676,24 @@ static uint32_t npu_allocate_bdfn(struct npu2 *p, uint32_t group)
 	return bdfn;
 }
 
-static void npu2_populate_devices(struct npu2 *p,
-				  struct dt_node *dn)
+static void npu2_populate_devices(struct npu2 *npu)
 {
 	struct npu2_dev *dev;
-	struct dt_node *npu2_dn, *link;
-	uint32_t npu_phandle, index = 0;
+	struct npu2_bar *npu2_bar;
 	int stack;
 
-	/*
-	 * Get the npu node which has the links which we expand here
-	 * into pci like devices attached to our emulated phb.
-	 */
-	npu_phandle = dt_prop_get_u32(dn, "ibm,npcq");
-	npu2_dn = dt_find_by_phandle(dt_root, npu_phandle);
-	assert(npu2_dn);
+	npu->phb_nvlink.scan_map = 0;
+	for (int i = 0; i < npu->total_devices; i++) {
+		dev = &npu->devices[i];
 
-	/* Walk the link@x nodes to initialize devices */
-	p->total_devices = 0;
-	p->phb_nvlink.scan_map = 0;
-	dt_for_each_compatible(npu2_dn, link, "ibm,npu-link") {
-		uint32_t group_id;
-		struct npu2_bar *npu2_bar;
+		if (dev->type != NPU2_DEV_TYPE_NVLINK)
+			continue;
 
-		dev = &p->devices[index];
-		dev->type = NPU2_DEV_TYPE_NVLINK;
-		dev->npu = p;
-		dev->dt_node = link;
-		dev->link_index = dt_prop_get_u32(link, "ibm,npu-link-index");
-		dev->brick_index = dev->link_index;
-
-		group_id = dt_prop_get_u32(link, "ibm,npu-group-id");
-		dev->bdfn = npu_allocate_bdfn(p, group_id);
+		dev->bdfn = npu_allocate_bdfn(npu, dev->group_id, i);
 
 		/* This must be done after calling
 		 * npu_allocate_bdfn() */
-		p->total_devices++;
-		p->phb_nvlink.scan_map |= 0x1 << ((dev->bdfn & 0xf8) >> 3);
-
-		dev->pl_xscom_base = dt_prop_get_u64(link, "ibm,npu-phy");
-		dev->lane_mask = dt_prop_get_u32(link, "ibm,npu-lane-mask");
+		npu->phb_nvlink.scan_map |= 0x1 << ((dev->bdfn & 0xf8) >> 3);
 
 		/* Populate BARs. BAR0/1 is the NTL bar. */
 		stack = NPU2_STACK_STCK_0 + NPU2DEV_STACK(dev);
@@ -1721,7 +1702,7 @@ static void npu2_populate_devices(struct npu2 *p,
 		npu2_bar->index = dev->brick_index;
 		npu2_bar->reg = NPU2_REG_OFFSET(stack, 0, NPU2DEV_BRICK(dev) == 0 ?
 						NPU2_NTL0_BAR : NPU2_NTL1_BAR);
-	        npu2_get_bar(p->chip_id, npu2_bar);
+	        npu2_get_bar(npu->chip_id, npu2_bar);
 
 		dev->bars[0].flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
 
@@ -1730,7 +1711,7 @@ static void npu2_populate_devices(struct npu2 *p,
 		npu2_bar->type = NPU_GENID;
 		npu2_bar->index = NPU2DEV_STACK(dev);
 		npu2_bar->reg = NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR);
-	        npu2_get_bar(p->chip_id, npu2_bar);
+	        npu2_get_bar(npu->chip_id, npu2_bar);
 
 		/* The GENID is a single physical BAR that we split
 		 * for each emulated device */
@@ -1740,14 +1721,13 @@ static void npu2_populate_devices(struct npu2 *p,
 		dev->bars[1].flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
 
 		/* Initialize PCI virtual device */
-		dev->nvlink.pvd = pci_virt_add_device(&p->phb_nvlink, dev->bdfn, 0x100, dev);
+		dev->nvlink.pvd = pci_virt_add_device(&npu->phb_nvlink,
+						      dev->bdfn, 0x100, dev);
 		if (dev->nvlink.pvd) {
-			p->phb_nvlink.scan_map |=
+			npu->phb_nvlink.scan_map |=
 				0x1 << ((dev->nvlink.pvd->bdfn & 0xf8) >> 3);
 			npu2_populate_cfg(dev);
 		}
-
-		index++;
 	}
 }
 
@@ -1938,7 +1918,7 @@ void npu2_nvlink_create_phb(struct npu2 *npu, struct dt_node *dn)
 	list_head_init(&npu->phb_nvlink.virt_devices);
 
 	npu2_setup_irqs(npu);
-	npu2_populate_devices(npu, dn);
+	npu2_populate_devices(npu);
 	npu2_add_interrupt_map(npu, dn);
 	npu2_add_phb_properties(npu);
 
