@@ -237,7 +237,8 @@ static void witherspoon_npu2_device_detect(struct npu2 *npu)
 	struct dt_node *dn;
 	int rc;
 
-	bool gpu0_present, gpu1_present;
+	enum npu2_dev_type gpu0_type = NPU2_DEV_TYPE_UNKNOWN;
+	enum npu2_dev_type gpu1_type = NPU2_DEV_TYPE_UNKNOWN;
 
 	if (witherspoon_type != WITHERSPOON_TYPE_REDBUD) {
 		prlog(PR_DEBUG, "PLAT: Setting all NPU links to NVLink, OpenCAPI only supported on Redbud\n");
@@ -266,16 +267,6 @@ static void witherspoon_npu2_device_detect(struct npu2 *npu)
 		return;
 	}
 
-	gpu0_present = occ_get_gpu_presence(chip, 0);
-	if (gpu0_present) {
-		prlog(PR_DEBUG, "PLAT: Chip %d GPU#0 slot present\n", chip->id);
-	}
-
-	gpu1_present = occ_get_gpu_presence(chip, 1);
-	if (gpu1_present) {
-		prlog(PR_DEBUG, "PLAT: Chip %d GPU#1 slot present\n", chip->id);
-	}
-
 	/* Set pins to input */
 	state = 0xff;
 	rc = i2c_request_send(i2c_port_id,
@@ -292,40 +283,62 @@ static void witherspoon_npu2_device_detect(struct npu2 *npu)
 	if (rc)
 		goto i2c_failed;
 
-	if (gpu0_present) {
+	if (occ_get_gpu_presence(chip, 0)) {
+		prlog(PR_DEBUG, "PLAT: Chip %d GPU#0 slot present\n", chip->id);
 		if (state & (1 << 0)) {
 			prlog(PR_DEBUG, "PLAT: Chip %d GPU#0 is OpenCAPI\n",
 			      chip->id);
-			/*
-			 * On witherspoon, bricks 2 and 3 are connected to
-			 * the lanes matching links 1 and 0 in OpenCAPI mode.
-			 */
-			set_link_details(npu, 0, 3, NPU2_DEV_TYPE_OPENCAPI);
-			/* We current don't support using the second link */
-			set_link_details(npu, 1, 2, NPU2_DEV_TYPE_UNKNOWN);
+			gpu0_type = NPU2_DEV_TYPE_OPENCAPI;
 		} else {
 			prlog(PR_DEBUG, "PLAT: Chip %d GPU#0 is NVLink\n",
 			      chip->id);
-			set_link_details(npu, 0, 0, NPU2_DEV_TYPE_NVLINK);
-			set_link_details(npu, 1, 1, NPU2_DEV_TYPE_NVLINK);
-			set_link_details(npu, 2, 2, NPU2_DEV_TYPE_NVLINK);
+			gpu0_type = NPU2_DEV_TYPE_NVLINK;
 		}
 	}
 
-	if (gpu1_present) {
+	if (occ_get_gpu_presence(chip, 1)) {
+		prlog(PR_DEBUG, "PLAT: Chip %d GPU#1 slot present\n", chip->id);
 		if (state & (1 << 1)) {
 			prlog(PR_DEBUG, "PLAT: Chip %d GPU#1 is OpenCAPI\n",
 			      chip->id);
-			set_link_details(npu, 4, 4, NPU2_DEV_TYPE_OPENCAPI);
-			/* We current don't support using the second link */
-			set_link_details(npu, 5, 5, NPU2_DEV_TYPE_UNKNOWN);
+			gpu1_type = NPU2_DEV_TYPE_OPENCAPI;
 		} else {
 			prlog(PR_DEBUG, "PLAT: Chip %d GPU#1 is NVLink\n",
 			      chip->id);
-			set_link_details(npu, 3, 3, NPU2_DEV_TYPE_NVLINK);
-			set_link_details(npu, 4, 4, NPU2_DEV_TYPE_NVLINK);
-			set_link_details(npu, 5, 5, NPU2_DEV_TYPE_NVLINK);
+			gpu1_type = NPU2_DEV_TYPE_NVLINK;
 		}
+	}
+
+	if (gpu0_type == NPU2_DEV_TYPE_OPENCAPI) {
+		/*
+		 * On witherspoon, bricks 2 and 3 are connected to
+		 * the lanes matching links 1 and 0 in OpenCAPI mode.
+		 */
+		set_link_details(npu, 0, 3, NPU2_DEV_TYPE_OPENCAPI);
+		/* We current don't support using the second link */
+		set_link_details(npu, 1, 2, NPU2_DEV_TYPE_UNKNOWN);
+	}
+
+	if (gpu0_type == NPU2_DEV_TYPE_NVLINK) {
+		set_link_details(npu, 0, 0, NPU2_DEV_TYPE_NVLINK);
+		set_link_details(npu, 1, 1, NPU2_DEV_TYPE_NVLINK);
+		set_link_details(npu, 2, 2, NPU2_DEV_TYPE_NVLINK);
+	}
+
+	if (gpu1_type == NPU2_DEV_TYPE_OPENCAPI) {
+		set_link_details(npu, 4, 4, NPU2_DEV_TYPE_OPENCAPI);
+		/* We current don't support using the second link */
+		set_link_details(npu, 5, 5, NPU2_DEV_TYPE_UNKNOWN);
+	}
+
+	if (gpu1_type == NPU2_DEV_TYPE_NVLINK) {
+		if (gpu0_type == NPU2_DEV_TYPE_OPENCAPI) {
+			prlog(PR_WARNING, "PLAT: Chip %d GPU#1 will operate at reduced performance due to presence of OpenCAPI device. For optimal performance, swap device locations\n", chip->id);
+		} else {
+			set_link_details(npu, 3, 3, NPU2_DEV_TYPE_NVLINK);
+		}
+		set_link_details(npu, 4, 4, NPU2_DEV_TYPE_NVLINK);
+		set_link_details(npu, 5, 5, NPU2_DEV_TYPE_NVLINK);
 	}
 
 	return;
