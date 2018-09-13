@@ -1318,7 +1318,7 @@ static void npu2_opencapi_final_fixup(struct phb *phb)
 
 static void mask_nvlink_fir(struct npu2 *p)
 {
-	uint64_t reg;
+	uint64_t reg, mask = 0ull;
 
 	/*
 	 * From section 13.1.3.10 of the NPU workbook: "the NV-Link
@@ -1327,35 +1327,41 @@ static void mask_nvlink_fir(struct npu2 *p)
 	 * OpenCAPI. Therefore, the corresponding bits in NPU FIR
 	 * Register 1 must be masked and configured to NOT cause the
 	 * NPU to go into Freeze or Fence mode or send an Interrupt."
-	 *
-	 * FIXME: will need to revisit when mixing nvlink with
-	 * opencapi. Assumes an opencapi-only setup on both PHYs for
-	 * now.
 	 */
 
+	for (int i = 0; i < p-> total_devices; i++) {
+		struct npu2_dev *dev = &p->devices[i];
+		/* Only mask OpenCAPI links (and unknown links, that can't hurt) */
+		if (dev->type == NPU2_DEV_TYPE_NVLINK)
+			continue;
+		// TODO: Brick index? Link index? What? Do we have some kind of "DL" index that accounts for ODL swap bits or something?
+		mask = SETFIELD(PPC_BITMASK(dev->brick_index * 2,
+					   dev->brick_index * 2 + 1),
+			       mask, 0b11);
+	}
 	/* Mask FIRs */
 	xscom_read(p->chip_id, p->xscom_base + NPU2_MISC_FIR_MASK1, &reg);
-	reg = SETFIELD(PPC_BITMASK(0, 11), reg, 0xFFF);
+	reg |= mask;
 	xscom_write(p->chip_id, p->xscom_base + NPU2_MISC_FIR_MASK1, reg);
 
 	/* freeze disable */
 	reg = npu2_scom_read(p->chip_id, p->xscom_base,
 			NPU2_MISC_FREEZE_ENABLE1, NPU2_MISC_DA_LEN_8B);
-	reg = SETFIELD(PPC_BITMASK(0, 11), reg, 0);
+	reg &= ~mask;
 	npu2_scom_write(p->chip_id, p->xscom_base,
 			NPU2_MISC_FREEZE_ENABLE1, NPU2_MISC_DA_LEN_8B, reg);
 
 	/* fence disable */
 	reg = npu2_scom_read(p->chip_id, p->xscom_base,
 			NPU2_MISC_FENCE_ENABLE1, NPU2_MISC_DA_LEN_8B);
-	reg = SETFIELD(PPC_BITMASK(0, 11), reg, 0);
+	reg &= ~mask;
 	npu2_scom_write(p->chip_id, p->xscom_base,
 			NPU2_MISC_FENCE_ENABLE1, NPU2_MISC_DA_LEN_8B, reg);
 
 	/* irq disable */
 	reg = npu2_scom_read(p->chip_id, p->xscom_base,
 			NPU2_MISC_IRQ_ENABLE1, NPU2_MISC_DA_LEN_8B);
-	reg = SETFIELD(PPC_BITMASK(0, 11), reg, 0);
+	reg &= ~mask;
 	npu2_scom_write(p->chip_id, p->xscom_base,
 			NPU2_MISC_IRQ_ENABLE1, NPU2_MISC_DA_LEN_8B, reg);
 }
