@@ -376,6 +376,7 @@ static void enable_xsl_xts_interfaces(uint32_t gcid, uint32_t scom_base, int ind
 		reg |= NPU2_XTS_CFG2_XSL2_ENA;
 		break;
 	}
+	prlog(PR_NOTICE, "OCAPI: Setting XTS Config2 to %016llx\n", reg);
 	npu2_scom_write(gcid, scom_base, NPU2_XTS_CFG2, NPU2_MISC_DA_LEN_8B, reg);
 }
 
