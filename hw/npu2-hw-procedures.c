@@ -972,11 +972,10 @@ static uint32_t run_procedure(struct npu2_dev *dev, uint16_t procedure_number)
 	return result;
 }
 
-void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev)
+uint64_t npu2_get_odl_training_status(struct npu2_dev *dev)
 {
 	uint64_t reg;
 	uint64_t status_xscom;
-	int lane, bit = 7;
 
 	switch (dev->brick_index) {
 	case 2:
@@ -995,7 +994,17 @@ void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev)
 		assert(false);
 	}
 	xscom_read(dev->npu->chip_id, status_xscom, &reg);
-	reg = GETFIELD(OB_ODL_TRAINING_STATUS_STS_RX_PATTERN_B, reg);
+
+	return reg;
+}
+
+void npu2_opencapi_bump_ui_lane(struct npu2_dev *dev)
+{
+	uint64_t reg;
+	int lane, bit = 7;
+
+	reg = GETFIELD(OB_ODL_TRAINING_STATUS_STS_RX_PATTERN_B,
+		       npu2_get_odl_training_status(dev));
 
 	FOR_EACH_LANE(dev, lane) {
 		if (reg & (1 << bit--))

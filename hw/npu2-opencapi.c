@@ -922,8 +922,9 @@ static int64_t npu2_opencapi_retry_state(struct pci_slot *slot)
 		 * functionality will not be available on this link.
 		 */
 		OCAPIERR(dev,
-			"Link failed to train, final link status: %016llx\n",
-			get_odl_status(chip_id, dev->brick_index));
+			"Link failed to train, final link status: %016llx, link training status: %016llx\n",
+			 get_odl_status(chip_id, dev->brick_index),
+			 npu2_get_odl_training_status(dev));
 		return OPAL_HARDWARE;
 	}
 
