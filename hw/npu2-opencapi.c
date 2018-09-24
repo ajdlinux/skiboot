@@ -937,7 +937,19 @@ static int64_t npu2_opencapi_retry_state(struct pci_slot *slot)
 		return OPAL_HARDWARE;
 	}
 
-	OCAPIERR(dev, "Link failed to train, retrying\n");
+	OCAPIERR(dev,
+		 "Link failed to train, retrying. Current link status: %016llx, link training status: %016llx\n",
+		 get_odl_status(chip_id, dev->brick_index),
+		 npu2_get_odl_training_status(dev));
+#ifdef DEBUG
+	prlog(PR_ERR, " _______________________________ \n");
+	prlog(PR_ERR, "< It's ODL Training Debug time! >\n");
+	prlog(PR_ERR, " ------------------------------- \n");
+	prlog(PR_ERR, "       \\   ,__,            \n");
+	prlog(PR_ERR, "        \\  (oo)____        \n");
+	prlog(PR_ERR, "           (__)    )\\      \n");
+	prlog(PR_ERR, "              ||--|| *     \n");
+#endif
 	pci_slot_set_state(slot, OCAPI_SLOT_FRESET_INIT);
 	return pci_slot_set_sm_timeout(slot, msecs_to_tb(1));
 }
