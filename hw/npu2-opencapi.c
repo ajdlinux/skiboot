@@ -1342,6 +1342,7 @@ static void npu2_opencapi_final_fixup(struct phb *phb)
 static void mask_nvlink_fir(struct npu2 *p)
 {
 	uint64_t reg, mask = 0ull;
+	int link_num;
 
 	/*
 	 * From section 13.1.3.10 of the NPU workbook: "the NV-Link
@@ -1354,13 +1355,18 @@ static void mask_nvlink_fir(struct npu2 *p)
 
 	for (int i = 0; i < p-> total_devices; i++) {
 		struct npu2_dev *dev = &p->devices[i];
-		/* Only mask OpenCAPI links (and unknown links, that can't hurt) */
-		if (dev->type == NPU2_DEV_TYPE_NVLINK)
+		/* Only mask OpenCAPI links */
+		if (dev->type != NPU2_DEV_TYPE_OPENCAPI)
 			continue;
-		// TODO: Brick index? Link index? What? Do we have some kind of "DL" index that accounts for ODL swap bits or something?
-		mask = SETFIELD(PPC_BITMASK(dev->brick_index * 2,
-					   dev->brick_index * 2 + 1),
-			       mask, 0b11);
+
+		if (dev->brick_index == 2 || dev->brick_index == 3) {
+			link_num = dev->brick_index - 2;
+		} else {
+			link_num = dev->brick_index;
+		}
+		mask = SETFIELD(PPC_BITMASK(link_num * 2,
+					    link_num * 2 + 1),
+				mask, 0b11);
 	}
 	/* Mask FIRs */
 	xscom_read(p->chip_id, p->xscom_base + NPU2_MISC_FIR_MASK1, &reg);
