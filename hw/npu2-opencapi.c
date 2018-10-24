@@ -721,63 +721,29 @@ static void address_translation_config(uint32_t gcid, uint32_t scom_base,
 	}
 }
 
-/* TODO: Merge this with NVLink implementation - we don't use the npu2_bar
- * wrapper for the PHY BARs yet */
-static void write_bar(uint32_t gcid, uint32_t scom_base, uint64_t reg,
-		      uint64_t addr, uint64_t size)
-{
-	uint64_t val;
-	int block;
-	switch (NPU2_REG(reg)) {
-	case NPU2_PHY_BAR:
-		val = SETFIELD(NPU2_PHY_BAR_ADDR, 0ul, addr >> 21);
-		val = SETFIELD(NPU2_PHY_BAR_ENABLE, val, 1);
-		break;
-	case NPU2_NTL0_BAR:
-	case NPU2_NTL1_BAR:
-		val = SETFIELD(NPU2_NTL_BAR_ADDR, 0ul, addr >> 16);
-		val = SETFIELD(NPU2_NTL_BAR_SIZE, val, ilog2(size >> 16));
-		val = SETFIELD(NPU2_NTL_BAR_ENABLE, val, 1);
-		break;
-	case NPU2_GENID_BAR:
-		val = SETFIELD(NPU2_GENID_BAR_ADDR, 0ul, addr >> 16);
-		val = SETFIELD(NPU2_GENID_BAR_ENABLE, val, 1);
-		break;
-	default:
-		val = 0ul;
-	}
-
-	for (block = NPU2_BLOCK_SM_0; block <= NPU2_BLOCK_SM_3; block++) {
-		npu2_scom_write(gcid, scom_base, NPU2_REG_OFFSET(0, block, reg),
-				NPU2_MISC_DA_LEN_8B, val);
-		prlog(PR_DEBUG, "OCAPI: Setting BAR %llx to %llx\n",
-		      NPU2_REG_OFFSET(0, block, reg), val);
-	}
-}
-
 static void setup_global_mmio_bar(uint32_t gcid, uint32_t scom_base,
 				  uint64_t reg[])
 {
-	uint64_t addr, size;
+	struct npu2_bar *bar;
+	struct npu2_bar phy_bars[] = {
+		{ .type = NPU_PHY, .index = 0,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
+		  .enabled = true },
+		{ .type = NPU_PHY, .index = 1,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
+		  .enabled = true },
+		{ .type = NPU_REGS, .index = 0,
+		  .reg = NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
+		  .enabled = true },
+	};
 
-	prlog(PR_DEBUG, "OCAPI: patching up PHY0 bar, %s\n", __func__);
-	phys_map_get(gcid, NPU_PHY, 0, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_2, 0, NPU2_PHY_BAR),
-		addr, size);
-	prlog(PR_DEBUG, "OCAPI: patching up PHY1 bar, %s\n", __func__);
-	phys_map_get(gcid, NPU_PHY, 1, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_1, 0, NPU2_PHY_BAR),
-		addr, size);
-
-	prlog(PR_DEBUG, "OCAPI: setup global mmio, %s\n", __func__);
-	phys_map_get(gcid, NPU_REGS, 0, &addr, &size);
-	write_bar(gcid, scom_base,
-		  NPU2_REG_OFFSET(NPU2_STACK_STCK_0, 0, NPU2_PHY_BAR),
-		addr, size);
-	reg[0] = addr;
-	reg[1] = size;
+	for (int i = 0; i < ARRAY_SIZE(phy_bars); i++) {
+		bar = &phy_bars[i];
+		npu2_get_bar(gcid, bar);
+		npu2_write_bar(NULL, bar, gcid, scom_base);
+	}
+	reg[0] = phy_bars[2].base;
+	reg[1] = phy_bars[2].size;
 }
 
 /* Procedure 13.1.3.8 - AFU MMIO Range BARs */
@@ -790,19 +756,21 @@ static void setup_afu_mmio_bars(uint32_t gcid, uint32_t scom_base,
 	uint64_t pa_offset = index_to_block(dev->brick_index) == NPU2_BLOCK_OTL0 ?
 		NPU2_CQ_CTL_MISC_MMIOPA0_CONFIG :
 		NPU2_CQ_CTL_MISC_MMIOPA1_CONFIG;
-	uint64_t addr, size, reg;
+	uint64_t reg;
 
 	prlog(PR_DEBUG, "OCAPI: %s: Setup AFU MMIO BARs\n", __func__);
-	phys_map_get(gcid, NPU_OCAPI_MMIO, dev->brick_index, &addr, &size);
+	dev->bars[0].type = NPU_OCAPI_MMIO;
+	dev->bars[0].index = dev->brick_index;
+	dev->bars[0].reg = NPU2_REG_OFFSET(stack, 0, offset);
+	dev->bars[0].enabled = true;
+	npu2_get_bar(gcid, &dev->bars[0]);
 
-	prlog(PR_DEBUG, "OCAPI: AFU MMIO set to %llx, size %llx\n", addr, size);
-	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, offset), addr,
-		size);
-	dev->bars[0].base = addr;
-	dev->bars[0].size = size;
+	prlog(PR_DEBUG, "OCAPI: AFU MMIO set to %llx, size %llx\n",
+	      dev->bars[0].base, dev->bars[0].size);
+	npu2_write_bar(NULL, &dev->bars[0], gcid, scom_base);
 
-	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_ADDR, 0ull, addr >> 16);
-	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_SIZE, reg, ilog2(size >> 16));
+	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_ADDR, 0ull, dev->bars[0].base >> 16);
+	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_SIZE, reg, ilog2(dev->bars[0].size >> 16));
 	prlog(PR_DEBUG, "OCAPI: PA translation %llx\n", reg);
 	npu2_scom_write(gcid, scom_base,
 			NPU2_REG_OFFSET(stack, NPU2_BLOCK_CTL,
@@ -816,15 +784,15 @@ static void setup_afu_config_bars(uint32_t gcid, uint32_t scom_base,
 {
 	uint64_t stack = index_to_stack(dev->brick_index);
 	int stack_num = stack - NPU2_STACK_STCK_0;
-	uint64_t addr, size;
 
 	prlog(PR_DEBUG, "OCAPI: %s: Setup AFU Config BARs\n", __func__);
-	phys_map_get(gcid, NPU_GENID, stack_num, &addr, &size);
-	prlog(PR_DEBUG, "OCAPI: Assigning GENID BAR: %016llx\n", addr);
-	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR),
-		addr, size);
-	dev->bars[1].base = addr;
-	dev->bars[1].size = size;
+	dev->bars[1].type = NPU_GENID;
+	dev->bars[1].index = stack_num;
+	dev->bars[1].reg = NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR);
+	dev->bars[1].enabled = true;
+	npu2_get_bar(gcid, &dev->bars[1]);
+	prlog(PR_DEBUG, "OCAPI: Assigning GENID BAR: %016llx\n", dev->bars[1].base);
+	npu2_write_bar(NULL, &dev->bars[1], gcid, scom_base);
 }
 
 static void otl_enabletx(uint32_t gcid, uint32_t scom_base,

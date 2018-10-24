@@ -22,6 +22,7 @@
 #include <bitutils.h>
 #include <nvram.h>
 #include <i2c.h>
+#include <phys-map.h>
 
 /*
  * We use the indirect method because it uses the same addresses as
@@ -95,6 +96,82 @@ void npu2_write_mask_4b(struct npu2 *p, uint64_t reg, uint32_t val, uint32_t mas
 	new_val |= val & mask;
 	npu2_scom_write(p->chip_id, p->xscom_base, reg, NPU2_MISC_DA_LEN_4B,
 			(uint64_t)new_val << 32);
+}
+
+void npu2_get_bar(uint32_t gcid, struct npu2_bar *bar)
+{
+	phys_map_get(gcid, bar->type, bar->index, &bar->base, &bar->size);
+}
+
+void npu2_read_bar(struct npu2 *p, struct npu2_bar *bar)
+{
+	uint64_t reg, val;
+
+	reg = NPU2_REG_OFFSET(0, NPU2_BLOCK_SM_0, bar->reg);
+	val = npu2_read(p, reg);
+
+	switch (NPU2_REG(bar->reg)) {
+	case NPU2_PHY_BAR:
+		bar->base = GETFIELD(NPU2_PHY_BAR_ADDR, val) << 21;
+		bar->enabled = GETFIELD(NPU2_PHY_BAR_ENABLE, val);
+
+		if (NPU2_REG_STACK(reg) == NPU2_STACK_STCK_0)
+			/* This is the global MMIO BAR */
+			bar->size = 0x1000000;
+		else
+			bar->size = 0x200000;
+		break;
+	case NPU2_NTL0_BAR:
+	case NPU2_NTL1_BAR:
+		bar->base = GETFIELD(NPU2_NTL_BAR_ADDR, val) << 16;
+		bar->enabled = GETFIELD(NPU2_NTL_BAR_ENABLE, val);
+		bar->size = 0x10000 << GETFIELD(NPU2_NTL_BAR_SIZE, val);
+		break;
+	case NPU2_GENID_BAR:
+		bar->base = GETFIELD(NPU2_GENID_BAR_ADDR, val) << 16;
+		bar->enabled = GETFIELD(NPU2_GENID_BAR_ENABLE, val);
+		bar->size = 0x20000;
+		break;
+	default:
+		bar->base = 0ul;
+		bar->enabled = false;
+		bar->size = 0;
+		break;
+	}
+}
+
+void npu2_write_bar(struct npu2 *p, struct npu2_bar *bar, uint32_t gcid,
+		    uint32_t scom)
+{
+	uint64_t reg, val;
+	int block;
+
+	switch (NPU2_REG(bar->reg)) {
+	case NPU2_PHY_BAR:
+		val = SETFIELD(NPU2_PHY_BAR_ADDR, 0ul, bar->base >> 21);
+		val = SETFIELD(NPU2_PHY_BAR_ENABLE, val, bar->enabled);
+		break;
+	case NPU2_NTL0_BAR:
+	case NPU2_NTL1_BAR:
+		val = SETFIELD(NPU2_NTL_BAR_ADDR, 0ul, bar->base >> 16);
+		val = SETFIELD(NPU2_NTL_BAR_ENABLE, val, bar->enabled);
+		val = SETFIELD(NPU2_NTL_BAR_SIZE, val, ilog2(bar->size >> 16));
+		break;
+	case NPU2_GENID_BAR:
+		val = SETFIELD(NPU2_GENID_BAR_ADDR, 0ul, bar->base >> 16);
+		val = SETFIELD(NPU2_GENID_BAR_ENABLE, val, bar->enabled);
+		break;
+	default:
+		val = 0ul;
+	}
+
+	for (block = NPU2_BLOCK_SM_0; block <= NPU2_BLOCK_SM_3; block++) {
+		reg = NPU2_REG_OFFSET(0, block, bar->reg);
+		if (p)
+			npu2_write(p, reg, val);
+		else
+			npu2_scom_write(gcid, scom, reg, NPU2_MISC_DA_LEN_8B, val);
+	}
 }
 
 static bool _i2c_presence_detect(struct npu2_dev *dev)
