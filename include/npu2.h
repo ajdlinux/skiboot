@@ -68,26 +68,21 @@
 struct npu2_bar {
 	enum phys_map_type	type;
 	int			index;
-#define NPU2_BAR_FLAG_ENABLED	0x0010
+	uint32_t		flags; /* NVLink: exported to PCI config space */
+	uint64_t		base;
+	uint64_t		size;
+	uint64_t		reg;
+
+	bool			enabled;
 
 /* Generation ID's are a single space in the hardware but we split
  * them in two for the emulated PCIe devices so we need to keep track
  * of which one has been enabled/disabled. */
-#define NPU2_BAR_FLAG_ENABLED0	0x0080
-#define NPU2_BAR_FLAG_ENABLED1  0x0100
-	uint32_t		flags;
-	uint64_t		base;
-	uint64_t		size;
-	uint64_t		reg;
-};
+	bool			enabled0;
+	bool			enabled1;
 
-/* Rpresents a BAR that is exposed via the PCIe emulated
- * devices */
-struct npu2_pcie_bar {
-#define NPU2_PCIE_BAR_FLAG_SIZE_HI	0x0020
-#define NPU2_PCIE_BAR_FLAG_TRAPPED	0x0040
-	uint32_t		flags;
-	struct npu2_bar		npu2_bar;
+	bool			size_hi;
+	bool			trapped;
 };
 
 enum npu2_dev_type {
@@ -122,7 +117,7 @@ struct npu2_dev {
 	uint32_t		brick_index;
 	uint64_t		pl_xscom_base;
 	struct dt_node		*dt_node;
-	struct npu2_pcie_bar	bars[2];
+	struct npu2_bar		bars[2];
 	struct npu2		*npu;
 
 	uint32_t		bdfn;

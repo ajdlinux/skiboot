@@ -798,8 +798,8 @@ static void setup_afu_mmio_bars(uint32_t gcid, uint32_t scom_base,
 	prlog(PR_DEBUG, "OCAPI: AFU MMIO set to %llx, size %llx\n", addr, size);
 	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, offset), addr,
 		size);
-	dev->bars[0].npu2_bar.base = addr;
-	dev->bars[0].npu2_bar.size = size;
+	dev->bars[0].base = addr;
+	dev->bars[0].size = size;
 
 	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_ADDR, 0ull, addr >> 16);
 	reg = SETFIELD(NPU2_CQ_CTL_MISC_MMIOPA_SIZE, reg, ilog2(size >> 16));
@@ -823,8 +823,8 @@ static void setup_afu_config_bars(uint32_t gcid, uint32_t scom_base,
 	prlog(PR_DEBUG, "OCAPI: Assigning GENID BAR: %016llx\n", addr);
 	write_bar(gcid, scom_base, NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR),
 		addr, size);
-	dev->bars[1].npu2_bar.base = addr;
-	dev->bars[1].npu2_bar.size = size;
+	dev->bars[1].base = addr;
+	dev->bars[1].size = size;
 }
 
 static void otl_enabletx(uint32_t gcid, uint32_t scom_base,
@@ -1307,7 +1307,7 @@ static int64_t npu2_opencapi_pcicfg_read(struct phb *phb, uint32_t bdfn,
 	if (rc)
 		return rc;
 
-	genid_base = dev->bars[1].npu2_bar.base +
+	genid_base = dev->bars[1].base +
 		(index_to_block(dev->brick_index) == NPU2_BLOCK_OTL1 ? 256 : 0);
 
 	cfg_addr = NPU2_CQ_CTL_CONFIG_ADDR_ENABLE;
@@ -1365,7 +1365,7 @@ static int64_t npu2_opencapi_pcicfg_write(struct phb *phb, uint32_t bdfn,
 	if (rc)
 		return rc;
 
-	genid_base = dev->bars[1].npu2_bar.base +
+	genid_base = dev->bars[1].base +
 		(index_to_block(dev->brick_index) == NPU2_BLOCK_OTL1 ? 256 : 0);
 
 	cfg_addr = NPU2_CQ_CTL_CONFIG_ADDR_ENABLE;
