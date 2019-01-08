@@ -117,7 +117,8 @@ struct npu2_dev {
 	uint32_t		brick_index;
 	uint64_t		pl_xscom_base;
 	struct dt_node		*dt_node;
-	struct npu2_bar		bars[2];
+	struct npu2_bar		ntl_bar;
+	struct npu2_bar		genid_bar;
 	struct npu2		*npu;
 
 	uint32_t		bdfn;

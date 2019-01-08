@@ -113,7 +113,6 @@ static int64_t npu2_cfg_write_cmd(void *dev,
 {
 	struct pci_virt_device *pvd = dev;
 	struct npu2_dev *ndev = pvd->data;
-	struct npu2_bar *ntl_npu_bar, *genid_npu_bar;
 	bool enabled;
 
 	if (!write)
@@ -129,11 +128,9 @@ static int64_t npu2_cfg_write_cmd(void *dev,
 	 * one GENID BAR, which is exposed via the first brick.
 	 */
 	enabled = !!(*data & PCI_CFG_CMD_MEM_EN);
-	ntl_npu_bar = &ndev->bars[0];
-	genid_npu_bar = &ndev->bars[1];
 
-	ntl_npu_bar->enabled = enabled;
-	npu2_write_bar(ndev->npu, ntl_npu_bar, 0, 0);
+	ndev->ntl_bar.enabled = enabled;
+	npu2_write_bar(ndev->npu, &ndev->ntl_bar, 0, 0);
 
 	/*
 	 * Enable/disable the GENID BAR. Two bricks share one GENID
@@ -141,13 +138,14 @@ static int64_t npu2_cfg_write_cmd(void *dev,
 	 * track the enables separately.
 	 */
 	if (NPU2DEV_BRICK(ndev))
-		genid_npu_bar->enabled1 = enabled;
+		ndev->genid_bar.enabled1 = enabled;
 	else
-		genid_npu_bar->enabled0 = enabled;
+		ndev->genid_bar.enabled0 = enabled;
 
 	/* Enable the BAR if either device requests it enabled, otherwise disable it */
-	genid_npu_bar->enabled = genid_npu_bar->enabled0 || genid_npu_bar->enabled1;
-	npu2_write_bar(ndev->npu, genid_npu_bar, 0, 0);
+	ndev->genid_bar.enabled = ndev->genid_bar.enabled0 ||
+		ndev->genid_bar.enabled1;
+	npu2_write_bar(ndev->npu, &ndev->genid_bar, 0, 0);
 
 	return OPAL_PARTIAL;
 }
@@ -1604,7 +1602,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 	PCI_VIRT_CFG_INIT_RO(pvd, PCI_CFG_CACHE_LINE_SIZE, 4, 0x00800000);
 
 	/* 0x10/14 - BAR#0, NTL BAR */
-	bar = &dev->bars[0];
+	bar = &dev->ntl_bar;
 	PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR0, 4,
 			  (bar->base & 0xfffffff0) | bar->flags,
 			  0x0000000f, 0x00000000);
@@ -1615,7 +1613,7 @@ static void npu2_populate_cfg(struct npu2_dev *dev)
 			    npu2_dev_cfg_bar, bar);
 
 	/* 0x18/1c - BAR#1, GENID BAR */
-	bar = &dev->bars[1];
+	bar = &dev->genid_bar;
 	if (NPU2DEV_BRICK(dev) == 0)
 		PCI_VIRT_CFG_INIT(pvd, PCI_CFG_BAR2, 4, (bar->base & 0xfffffff0) |
 				  bar->flags,
@@ -1694,7 +1692,6 @@ static void npu2_populate_devices(struct npu2 *p,
 	p->phb_nvlink.scan_map = 0;
 	dt_for_each_compatible(npu2_dn, link, "ibm,npu-link") {
 		uint32_t group_id;
-		struct npu2_bar *npu2_bar;
 
 		dev = &p->devices[index];
 		dev->type = NPU2_DEV_TYPE_NVLINK;
@@ -1716,28 +1713,29 @@ static void npu2_populate_devices(struct npu2 *p,
 
 		/* Populate BARs. BAR0/1 is the NTL bar. */
 		stack = NPU2_STACK_STCK_0 + NPU2DEV_STACK(dev);
-		npu2_bar = &dev->bars[0];
-		npu2_bar->type = NPU_NTL;
-		npu2_bar->index = dev->brick_index;
-		npu2_bar->reg = NPU2_REG_OFFSET(stack, 0, NPU2DEV_BRICK(dev) == 0 ?
-						NPU2_NTL0_BAR : NPU2_NTL1_BAR);
-	        npu2_get_bar(p->chip_id, npu2_bar);
+		dev->ntl_bar.type = NPU_NTL;
+		dev->ntl_bar.index = dev->brick_index;
+		dev->ntl_bar.reg = NPU2_REG_OFFSET(stack, 0,
+						   NPU2DEV_BRICK(dev) == 0 ?
+						   NPU2_NTL0_BAR :
+						   NPU2_NTL1_BAR);
+		npu2_get_bar(p->chip_id, &dev->ntl_bar);
 
-		dev->bars[0].flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
+		dev->ntl_bar.flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
 
 		/* BAR2/3 is the GENID bar. */
-		npu2_bar = &dev->bars[1];
-		npu2_bar->type = NPU_GENID;
-		npu2_bar->index = NPU2DEV_STACK(dev);
-		npu2_bar->reg = NPU2_REG_OFFSET(stack, 0, NPU2_GENID_BAR);
-	        npu2_get_bar(p->chip_id, npu2_bar);
+		dev->genid_bar.type = NPU_GENID;
+		dev->genid_bar.index = NPU2DEV_STACK(dev);
+		dev->genid_bar.reg = NPU2_REG_OFFSET(stack, 0,
+						     NPU2_GENID_BAR);
+		npu2_get_bar(p->chip_id, &dev->genid_bar);
 
 		/* The GENID is a single physical BAR that we split
 		 * for each emulated device */
-		npu2_bar->size = 0x10000;
+		dev->genid_bar.size = 0x10000;
 		if (NPU2DEV_BRICK(dev))
-			npu2_bar->base += 0x10000;
-		dev->bars[1].flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
+			dev->genid_bar.base += 0x10000;
+		dev->genid_bar.flags = PCI_CFG_BAR_TYPE_MEM | PCI_CFG_BAR_MEM64;
 
 		/* Initialize PCI virtual device */
 		dev->nvlink.pvd = pci_virt_add_device(&p->phb_nvlink, dev->bdfn, 0x100, dev);
