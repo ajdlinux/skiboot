@@ -1537,11 +1537,13 @@ static void npu2_opencapi_final_fixup(struct phb *phb)
 	pci_walk_dev(phb, NULL, npu2_add_mmio_regs, NULL);
 }
 
-static void mask_nvlink_fir(struct npu2 *p)
+static void mask_firs(struct npu2 *p)
 {
 	uint64_t reg;
 
 	/*
+	 * NVLink Datalink Layer Stall and NoStall
+	 *
 	 * From section 13.1.3.10 of the NPU workbook: "the NV-Link
 	 * Datalink Layer Stall and NoStall signals are used for a
 	 * different purpose when the link is configured for
@@ -1579,9 +1581,32 @@ static void mask_nvlink_fir(struct npu2 *p)
 	reg = SETFIELD(PPC_BITMASK(0, 11), reg, 0);
 	npu2_scom_write(p->chip_id, p->xscom_base,
 			NPU2_MISC_IRQ_ENABLE1, NPU2_MISC_DA_LEN_8B, reg);
+
+	/*
+	 * OTL RX Bad Data TODO: do we remove this from the enable_interrupts val
+	 */
+	/* Mask FIRs */
+	xscom_read(p->chip_id, p->xscom_base + NPU2_MISC_FIR2_MASK, &reg);
+	reg = SETFIELD(PPC_BITMASK(15, 16), reg, 0b11);
+	xscom_write(p->chip_id, p->xscom_base + NPU2_MISC_FIR2_MASK, reg);
+
+	/* fence disable */
+	reg = npu2_scom_read(p->chip_id, p->xscom_base,
+			NPU2_MISC_FENCE_ENABLE2, NPU2_MISC_DA_LEN_8B);
+	reg = SETFIELD(PPC_BITMASK(15, 16), reg, 0);
+	npu2_scom_write(p->chip_id, p->xscom_base,
+			NPU2_MISC_FENCE_ENABLE2, NPU2_MISC_DA_LEN_8B, reg);
+
+	/* irq disable */
+	reg = npu2_scom_read(p->chip_id, p->xscom_base,
+			NPU2_MISC_IRQ_ENABLE2, NPU2_MISC_DA_LEN_8B);
+	reg = SETFIELD(PPC_BITMASK(15, 16), reg, 0);
+	npu2_scom_write(p->chip_id, p->xscom_base,
+			NPU2_MISC_IRQ_ENABLE2, NPU2_MISC_DA_LEN_8B, reg);
+	
 }
 
-static int enable_interrupts(struct npu2 *p)
+static void enable_interrupts(struct npu2 *p)
 {
 	uint64_t reg, val_xsl, val_override;
 
@@ -1616,9 +1641,6 @@ static int enable_interrupts(struct npu2 *p)
 	reg |= val_override;
 	npu2_scom_write(p->chip_id, p->xscom_base, NPU2_MISC_FENCE_ENABLE2,
 			NPU2_MISC_DA_LEN_8B, reg);
-
-	mask_nvlink_fir(p);
-	return 0;
 }
 
 static void setup_debug_training_state(struct npu2_dev *dev)
@@ -1777,6 +1799,7 @@ int npu2_opencapi_init_npu(struct npu2 *npu)
 	}
 
 	enable_interrupts(npu);
+	mask_firs(npu);
 
 	for (int i = 0; i < npu->total_devices; i++) {
 		dev = &npu->devices[i];
